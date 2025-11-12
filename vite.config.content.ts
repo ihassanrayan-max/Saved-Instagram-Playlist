@@ -12,6 +12,7 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    emptyOutDir: false, // Don't clear dist, since main app builds there first
     rollupOptions: {
       input: {
         content: "src/content.tsx",
@@ -19,6 +20,7 @@ export default defineConfig({
       output: {
         entryFileNames: "[name].js",
         format: "iife",
+        inlineDynamicImports: true, // Bundle everything into single file
       },
     },
   },
