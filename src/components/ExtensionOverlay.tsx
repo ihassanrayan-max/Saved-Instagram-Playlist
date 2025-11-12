@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Play, Loader2 } from 'lucide-react';
 import { VideoPlayer } from './VideoPlayer';
 import { VideoDetector } from '@/utils/videoDetector';
+import { fetchVideoUrl } from '@/utils/videoFetcher';
 import type { VideoData } from '@/utils/videoDetector';
 
 export const ExtensionOverlay = () => {
@@ -18,19 +19,67 @@ export const ExtensionOverlay = () => {
     setIsEnabled(isCollectionPage);
   }, []);
 
+  // Phase 7: Integration with new detection system
   const handleEnable = async () => {
+    console.log('🚀 [Phase 7] Starting video collection process...');
     setIsCollecting(true);
     const detector = new VideoDetector();
 
     try {
-      const collectedVideos = await detector.collectAllVideos((count) => {
-        setVideoCount(count);
-      });
+      // Detect videos (returns VideoData with null videoUrls)
+      console.log('📡 [Phase 7] Detecting videos from DOM...');
+      const detectedVideos = detector.detectVideos();
+      setVideoCount(detectedVideos.length);
+      
+      if (detectedVideos.length === 0) {
+        console.warn('⚠️ [Phase 7] No videos detected on page');
+        alert('No videos found on this page. Make sure you are on an Instagram saved collection with videos.');
+        setIsCollecting(false);
+        return;
+      }
 
-      setVideos(collectedVideos);
+      console.log(`✅ [Phase 7] Detected ${detectedVideos.length} videos, now fetching URLs...`);
+      
+      // Fetch video URLs for each detected video
+      const videosWithUrls = await Promise.all(
+        detectedVideos.map(async (video, index) => {
+          try {
+            console.log(`📥 [Phase 7] Fetching URL ${index + 1}/${detectedVideos.length} for shortcode: ${video.shortcode}`);
+            const videoUrl = await fetchVideoUrl(video.shortcode);
+            return {
+              ...video,
+              videoUrl,
+              isLoading: false,
+              error: undefined
+            };
+          } catch (error) {
+            console.error(`❌ [Phase 7] Failed to fetch URL for ${video.shortcode}:`, error);
+            return {
+              ...video,
+              videoUrl: null,
+              isLoading: false,
+              error: 'Failed to load video'
+            };
+          }
+        })
+      );
+
+      // Filter out videos that failed to load
+      const validVideos = videosWithUrls.filter(v => v.videoUrl !== null) as VideoData[];
+      
+      console.log(`✅ [Phase 7] Successfully loaded ${validVideos.length}/${detectedVideos.length} videos`);
+      
+      if (validVideos.length === 0) {
+        alert('Failed to load video URLs. The videos may be private or unavailable.');
+        setIsCollecting(false);
+        return;
+      }
+
+      setVideos(validVideos);
       setShowPlayer(true);
     } catch (error) {
-      console.error('Error collecting videos:', error);
+      console.error('❌ [Phase 7] Error in collection process:', error);
+      alert('An error occurred while collecting videos. Check console for details.');
     } finally {
       setIsCollecting(false);
     }

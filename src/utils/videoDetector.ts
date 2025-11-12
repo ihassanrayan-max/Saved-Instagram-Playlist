@@ -1,47 +1,90 @@
+// Phase 5: Updated VideoData interface
 export interface VideoData {
   id: string;
-  videoUrl: string;
+  shortcode: string;
+  postUrl: string;
+  videoUrl: string | null;
   thumbnailUrl: string;
   username?: string;
   caption?: string;
-  element: HTMLVideoElement;
+  isLoading?: boolean;
+  error?: string;
 }
 
 export class VideoDetector {
   private videos: VideoData[] = [];
   private observer: MutationObserver | null = null;
 
+  // Phase 1-3: New detection methods
+  detectPostLinks(): Array<{ shortcode: string; postUrl: string; thumbnailUrl: string; isVideo: boolean }> {
+    console.log('🔍 [Phase 1] Starting post link detection...');
+    
+    const posts: Array<{ shortcode: string; postUrl: string; thumbnailUrl: string; isVideo: boolean }> = [];
+    
+    // Find all links to posts (including reels)
+    const postLinks = document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]');
+    console.log(`📊 [Phase 1] Found ${postLinks.length} post links on page`);
+    
+    postLinks.forEach((link, index) => {
+      const href = (link as HTMLAnchorElement).href;
+      
+      // Extract shortcode
+      const shortcodeMatch = href.match(/\/(p|reel)\/([^\/\?]+)/);
+      if (!shortcodeMatch) {
+        console.log(`⚠️ [Phase 1] Could not extract shortcode from: ${href}`);
+        return;
+      }
+      
+      const shortcode = shortcodeMatch[2];
+      console.log(`✅ [Phase 1] Extracted shortcode: ${shortcode}`);
+      
+      // Phase 2: Find thumbnail
+      const img = link.querySelector('img');
+      const thumbnailUrl = img?.src || img?.getAttribute('srcset')?.split(' ')[0] || '';
+      console.log(`${thumbnailUrl ? '🖼️' : '⚠️'} [Phase 2] Thumbnail ${thumbnailUrl ? 'found' : 'missing'} for ${shortcode}`);
+      
+      // Phase 3: Determine if it's a video
+      const isReel = href.includes('/reel/');
+      const hasVideoIcon = link.querySelector('svg[aria-label*="Video"], svg[aria-label*="Reel"], [aria-label*="Video"], [aria-label*="Reel"]');
+      const isVideo = isReel || !!hasVideoIcon;
+      console.log(`${isVideo ? '🎥' : '📷'} [Phase 3] Post ${shortcode} is a ${isVideo ? 'VIDEO' : 'PHOTO'}`);
+      
+      posts.push({
+        shortcode,
+        postUrl: href,
+        thumbnailUrl,
+        isVideo
+      });
+    });
+    
+    const videoPosts = posts.filter(p => p.isVideo);
+    console.log(`✅ [Phase 3] Detected ${videoPosts.length} video posts out of ${posts.length} total posts`);
+    
+    return posts;
+  }
+
   detectVideos(): VideoData[] {
+    console.log('🚀 [VideoDetector] Starting video detection...');
     this.videos = [];
     
-    // Find all video elements on the page
-    const videoElements = document.querySelectorAll('video');
+    const posts = this.detectPostLinks();
+    const videoPosts = posts.filter(p => p.isVideo);
     
-    videoElements.forEach((video, index) => {
-      if (video.src || video.querySelector('source')?.src) {
-        const videoUrl = video.src || video.querySelector('source')?.src || '';
-        
-        // Try to find thumbnail from poster or nearby img
-        const thumbnailUrl = video.poster || 
-          video.closest('article')?.querySelector('img')?.src || 
-          '';
-
-        // Try to extract username and caption
-        const article = video.closest('article');
-        const username = article?.querySelector('a[href*="/"]')?.textContent || undefined;
-        const caption = article?.querySelector('[role="button"] span')?.textContent || undefined;
-
-        this.videos.push({
-          id: `video-${index}-${Date.now()}`,
-          videoUrl,
-          thumbnailUrl,
-          username,
-          caption,
-          element: video
-        });
-      }
+    videoPosts.forEach((post, index) => {
+      this.videos.push({
+        id: `video-${index}-${Date.now()}`,
+        shortcode: post.shortcode,
+        postUrl: post.postUrl,
+        videoUrl: null, // Will be fetched later
+        thumbnailUrl: post.thumbnailUrl,
+        username: undefined,
+        caption: undefined,
+        isLoading: true,
+        error: undefined
+      });
     });
 
+    console.log(`📦 [VideoDetector] Created ${this.videos.length} video entries`);
     return this.videos;
   }
 

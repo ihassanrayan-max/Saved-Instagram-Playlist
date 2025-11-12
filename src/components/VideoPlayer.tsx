@@ -38,13 +38,28 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
 
   const currentVideo = videos[currentIndex];
 
+  // Phase 6: Add metadata loading and error handling
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
+    console.log('🎬 [VideoPlayer] Setting up video event listeners for index:', currentIndex);
+
+    const handleLoadedMetadata = () => {
+      console.log('✅ [VideoPlayer] Video metadata loaded, duration:', video.duration);
+    };
+
+    const handleError = (e: Event) => {
+      console.error('❌ [VideoPlayer] Video error:', e);
+      console.error('Video source:', currentVideo?.videoUrl);
+    };
+
     const updateProgress = () => {
-      const progress = (video.currentTime / video.duration) * 100;
-      setProgress(progress);
+      // Phase 6: Guard against NaN duration
+      if (isFinite(video.duration) && video.duration > 0) {
+        const progress = (video.currentTime / video.duration) * 100;
+        setProgress(progress);
+      }
     };
 
     const handleEnded = () => {
@@ -56,10 +71,14 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
       }
     };
 
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('error', handleError);
     video.addEventListener('timeupdate', updateProgress);
     video.addEventListener('ended', handleEnded);
 
     return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('error', handleError);
       video.removeEventListener('timeupdate', updateProgress);
       video.removeEventListener('ended', handleEnded);
     };
@@ -111,11 +130,17 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
     }
   };
 
+  // Phase 6: Fix NaN duration bug
   const handleSeek = (value: number[]) => {
-    if (videoRef.current) {
+    if (videoRef.current && 
+        isFinite(videoRef.current.duration) && 
+        videoRef.current.duration > 0) {
       const time = (value[0] / 100) * videoRef.current.duration;
       videoRef.current.currentTime = time;
       setProgress(value[0]);
+      console.log('⏩ [VideoPlayer] Seeking to:', time, 'seconds');
+    } else {
+      console.warn('⚠️ [VideoPlayer] Cannot seek - video duration not ready');
     }
   };
 
