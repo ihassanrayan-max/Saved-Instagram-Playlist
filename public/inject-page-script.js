@@ -1,215 +1,272 @@
 // This file runs in Instagram's page context (bypasses CSP)
 (function() {
-  console.log('🔮 [Page Script] Extracting data from Instagram page context...');
+  console.log('🔮 [Page Script] Starting GraphQL network interception...');
   
-  try {
-    // Log all window properties that might contain Instagram data
-    console.log('🔍 [Page Script] Scanning window object for Instagram data...');
-    const windowKeys = Object.keys(window).filter(key => 
-      key.includes('shared') || 
-      key.includes('initial') || 
-      key.includes('additional') ||
-      key.includes('data') ||
-      key.includes('Data') ||
-      key.startsWith('__')
-    );
-    console.log('📋 [Page Script] Relevant window properties:', windowKeys);
+  let collectedVideos = [];
+  
+  // ============= NETWORK INTERCEPTION =============
+  
+  // Intercept Fetch API
+  const originalFetch = window.fetch;
+  window.fetch = async function(...args) {
+    const response = await originalFetch.apply(this, args);
     
-    let videos = [];
-    let dataSource = null;
+    // Clone response so we can read it without consuming it
+    const clonedResponse = response.clone();
+    const url = args[0];
     
-    // Method 1: Check window._sharedData
-    if (window._sharedData) {
-      console.log('✅ [Page Script] Found window._sharedData');
-      console.log('📊 [Page Script] _sharedData keys:', Object.keys(window._sharedData));
-      
-      if (window._sharedData.entry_data) {
-        console.log('📊 [Page Script] entry_data keys:', Object.keys(window._sharedData.entry_data));
-        
-        const entryData = window._sharedData.entry_data;
-        let savedPosts = null;
-        
-        if (entryData.ProfilePage?.[0]?.graphql?.user?.edge_saved_media?.edges) {
-          savedPosts = entryData.ProfilePage[0].graphql.user.edge_saved_media.edges;
-          dataSource = 'window._sharedData.entry_data.ProfilePage';
-        } else if (entryData.CollectionPage?.[0]?.graphql?.edges) {
-          savedPosts = entryData.CollectionPage[0].graphql.edges;
-          dataSource = 'window._sharedData.entry_data.CollectionPage';
-        } else if (entryData.SavedPage?.[0]?.graphql?.user?.edge_saved_media?.edges) {
-          savedPosts = entryData.SavedPage[0].graphql.user.edge_saved_media.edges;
-          dataSource = 'window._sharedData.entry_data.SavedPage';
-        }
-        
-        if (savedPosts && savedPosts.length > 0) {
-          videos = extractVideosFromPosts(savedPosts);
-          console.log(`✅ [Page Script] Found ${videos.length} videos in ${dataSource}`);
-        }
+    // Check if this is an Instagram GraphQL request
+    if (typeof url === 'string' && url.includes('/graphql/query')) {
+      try {
+        const data = await clonedResponse.json();
+        console.log('📡 [Network] GraphQL response intercepted:', url);
+        processGraphQLResponse(data);
+      } catch (e) {
+        console.log('⚠️ [Network] Could not parse GraphQL response:', e);
       }
     }
     
-    // Method 2: Check window.__additionalDataLoaded
-    if (videos.length === 0 && window.__additionalDataLoaded) {
-      console.log('✅ [Page Script] Found window.__additionalDataLoaded');
-      console.log('📊 [Page Script] __additionalDataLoaded keys:', Object.keys(window.__additionalDataLoaded));
-      
-      Object.keys(window.__additionalDataLoaded).forEach(key => {
-        const data = window.__additionalDataLoaded[key];
-        if (data?.data?.user?.edge_saved_media?.edges) {
-          videos = extractVideosFromPosts(data.data.user.edge_saved_media.edges);
-          dataSource = `window.__additionalDataLoaded.${key}`;
-          console.log(`✅ [Page Script] Found ${videos.length} videos in ${dataSource}`);
+    return response;
+  };
+  
+  // Intercept XMLHttpRequest
+  const originalOpen = XMLHttpRequest.prototype.open;
+  const originalSend = XMLHttpRequest.prototype.send;
+  
+  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+    this._url = url;
+    return originalOpen.apply(this, [method, url, ...rest]);
+  };
+  
+  XMLHttpRequest.prototype.send = function(...args) {
+    if (this._url && this._url.includes('/graphql/query')) {
+      this.addEventListener('load', function() {
+        try {
+          const data = JSON.parse(this.responseText);
+          console.log('📡 [Network] XHR GraphQL response intercepted:', this._url);
+          processGraphQLResponse(data);
+        } catch (e) {
+          console.log('⚠️ [Network] Could not parse XHR response:', e);
         }
       });
     }
-    
-    // Method 3: Check window.__initialData
-    if (videos.length === 0 && window.__initialData) {
-      console.log('✅ [Page Script] Found window.__initialData');
-      console.log('📊 [Page Script] __initialData keys:', Object.keys(window.__initialData));
+    return originalSend.apply(this, args);
+  };
+  
+  // ============= GRAPHQL RESPONSE PROCESSOR =============
+  
+  function processGraphQLResponse(data) {
+    try {
+      // Instagram GraphQL responses can have various structures
+      // Let's search for video data in common locations
       
-      const initialData = window.__initialData;
-      if (initialData?.data?.user?.edge_saved_media?.edges) {
-        videos = extractVideosFromPosts(initialData.data.user.edge_saved_media.edges);
-        dataSource = 'window.__initialData';
-        console.log(`✅ [Page Script] Found ${videos.length} videos in ${dataSource}`);
+      const videos = [];
+      
+      // Method 1: Check data.user.edge_saved_media.edges
+      if (data?.data?.user?.edge_saved_media?.edges) {
+        console.log('✅ [GraphQL] Found edge_saved_media with', data.data.user.edge_saved_media.edges.length, 'items');
+        videos.push(...extractVideosFromEdges(data.data.user.edge_saved_media.edges));
       }
-    }
-    
-    // Method 4: Search React Fiber tree
-    if (videos.length === 0) {
-      console.log('🔍 [Page Script] Searching React Fiber tree...');
-      const reactRoot = document.querySelector('[data-reactroot]') || document.querySelector('#react-root') || document.body;
       
-      if (reactRoot) {
-        const fiberKey = Object.keys(reactRoot).find(key => key.startsWith('__reactFiber') || key.startsWith('__reactInternalInstance'));
+      // Method 2: Check data.user.edge_owner_to_timeline_media.edges
+      if (data?.data?.user?.edge_owner_to_timeline_media?.edges) {
+        console.log('✅ [GraphQL] Found edge_owner_to_timeline_media with', data.data.user.edge_owner_to_timeline_media.edges.length, 'items');
+        videos.push(...extractVideosFromEdges(data.data.user.edge_owner_to_timeline_media.edges));
+      }
+      
+      // Method 3: Check xdt_api__v1__feed__user_timeline_graphql_connection
+      if (data?.data?.xdt_api__v1__feed__user_timeline_graphql_connection?.edges) {
+        console.log('✅ [GraphQL] Found xdt_api timeline with', data.data.xdt_api__v1__feed__user_timeline_graphql_connection.edges.length, 'items');
+        videos.push(...extractVideosFromEdges(data.data.xdt_api__v1__feed__user_timeline_graphql_connection.edges));
+      }
+      
+      // Method 4: Check data.xdt_api__v1__media__shortcode__web_info
+      if (data?.data?.xdt_api__v1__media__shortcode__web_info) {
+        console.log('✅ [GraphQL] Found xdt_api media info');
+        const item = data.data.xdt_api__v1__media__shortcode__web_info.items?.[0];
+        if (item) {
+          const video = extractVideoFromItem(item);
+          if (video) videos.push(video);
+        }
+      }
+      
+      // Method 5: Deep search for any edges array with video data
+      const foundEdges = deepSearchForEdges(data);
+      if (foundEdges.length > 0) {
+        console.log('✅ [GraphQL] Found edges via deep search:', foundEdges.length);
+        videos.push(...extractVideosFromEdges(foundEdges));
+      }
+      
+      if (videos.length > 0) {
+        console.log(`🎉 [GraphQL] Extracted ${videos.length} videos from response`);
         
-        if (fiberKey) {
-          console.log('✅ [Page Script] Found React Fiber');
-          const fiber = reactRoot[fiberKey];
-          const posts = searchFiberForSavedPosts(fiber);
-          
-          if (posts && posts.length > 0) {
-            videos = extractVideosFromPosts(posts);
-            dataSource = 'React Fiber tree';
-            console.log(`✅ [Page Script] Found ${videos.length} videos in ${dataSource}`);
+        // Add to collection and deduplicate
+        videos.forEach(video => {
+          if (!collectedVideos.some(v => v.shortcode === video.shortcode)) {
+            collectedVideos.push(video);
           }
-        }
+        });
+        
+        // Send update to content script
+        window.postMessage({
+          type: 'INSTAGRAM_VIDEOS_FOUND',
+          videos: collectedVideos,
+          source: 'graphql_interception'
+        }, '*');
+        
+        console.log(`📊 [GraphQL] Total unique videos collected: ${collectedVideos.length}`);
       }
+    } catch (error) {
+      console.error('❌ [GraphQL] Error processing response:', error);
     }
-    
-    // Method 5: Log all window properties with 'data' or graph-like structures
-    if (videos.length === 0) {
-      console.log('🔍 [Page Script] Checking for other data structures...');
-      windowKeys.forEach(key => {
-        const value = window[key];
-        if (value && typeof value === 'object') {
-          console.log(`📊 [Page Script] window.${key} structure:`, {
-            type: typeof value,
-            keys: Object.keys(value).slice(0, 10),
-            hasData: 'data' in value,
-            hasGraphql: 'graphql' in value,
-            hasEdges: searchForEdges(value)
-          });
-        }
-      });
-    }
-    
-    // Send results
-    if (videos.length > 0) {
-      console.log(`✅ [Page Script] Successfully extracted ${videos.length} videos from ${dataSource}`);
-      window.postMessage({
-        type: 'INSTAGRAM_VIDEO_DATA',
-        videos: videos,
-        source: dataSource
-      }, '*');
-    } else {
-      console.warn('⚠️ [Page Script] No videos found in any data source');
-      console.log('💡 [Page Script] Instagram may be using a different data structure or loading method');
-      window.postMessage({
-        type: 'INSTAGRAM_VIDEO_DATA',
-        videos: [],
-        error: 'No videos found. Data may be loaded dynamically.',
-        availableKeys: windowKeys
-      }, '*');
-    }
-    
-  } catch (error) {
-    console.error('❌ [Page Script] Error extracting data:', error);
-    window.postMessage({
-      type: 'INSTAGRAM_VIDEO_DATA',
-      videos: [],
-      error: error.message
-    }, '*');
   }
   
-  // Helper functions
-  function extractVideosFromPosts(posts) {
+  // ============= VIDEO EXTRACTION FUNCTIONS =============
+  
+  function extractVideosFromEdges(edges) {
     const videos = [];
     
-    posts.forEach((edge) => {
+    edges.forEach(edge => {
       const node = edge.node;
+      if (!node) return;
       
+      // Check if this is a video
       const isVideo = node.__typename === 'GraphVideo' || 
-                     node.is_video === true ||
-                     (node.media_type && node.media_type === 2);
+                      node.__typename === 'XDTGraphVideo' ||
+                      node.is_video === true ||
+                      node.media_type === 2;
       
       if (isVideo) {
-        videos.push({
-          shortcode: node.shortcode,
-          videoUrl: node.video_url || null,
-          thumbnailUrl: node.display_url || node.thumbnail_src || node.thumbnail_resources?.[0]?.src,
-          username: node.owner?.username || 'unknown',
-          caption: node.edge_media_to_caption?.edges?.[0]?.node?.text || '',
-          postUrl: `https://www.instagram.com/p/${node.shortcode}/`
-        });
+        const video = extractVideoFromItem(node);
+        if (video) videos.push(video);
       }
     });
     
     return videos;
   }
   
-  function searchFiberForSavedPosts(fiber, depth = 0, maxDepth = 15) {
-    if (!fiber || depth > maxDepth) return null;
-    
-    // Check memoizedProps and memoizedState for data
-    if (fiber.memoizedProps?.data?.user?.edge_saved_media?.edges) {
-      return fiber.memoizedProps.data.user.edge_saved_media.edges;
+  function extractVideoFromItem(item) {
+    try {
+      // Extract shortcode
+      const shortcode = item.shortcode || item.code || item.id;
+      if (!shortcode) return null;
+      
+      // Extract video URL
+      const videoUrl = item.video_url || 
+                       item.video_versions?.[0]?.url ||
+                       null;
+      
+      // Extract thumbnail
+      const thumbnail = item.display_url || 
+                        item.thumbnail_url ||
+                        item.image_versions2?.candidates?.[0]?.url ||
+                        null;
+      
+      // Extract caption
+      const caption = item.edge_media_to_caption?.edges?.[0]?.node?.text ||
+                      item.caption?.text ||
+                      '';
+      
+      console.log(`📹 [Extract] Found video: ${shortcode}`);
+      
+      return {
+        shortcode,
+        videoUrl,
+        postUrl: `https://www.instagram.com/p/${shortcode}/`,
+        thumbnail,
+        caption,
+        username: item.owner?.username || '',
+        timestamp: item.taken_at_timestamp || Date.now() / 1000
+      };
+    } catch (error) {
+      console.error('❌ [Extract] Error extracting video:', error);
+      return null;
     }
-    
-    if (fiber.memoizedState?.data?.user?.edge_saved_media?.edges) {
-      return fiber.memoizedState.data.user.edge_saved_media.edges;
-    }
-    
-    // Traverse fiber tree
-    let result = null;
-    if (fiber.child && !result) {
-      result = searchFiberForSavedPosts(fiber.child, depth + 1, maxDepth);
-    }
-    if (fiber.sibling && !result) {
-      result = searchFiberForSavedPosts(fiber.sibling, depth + 1, maxDepth);
-    }
-    
-    return result;
   }
   
-  function searchForEdges(obj, depth = 0, maxDepth = 3) {
-    if (!obj || typeof obj !== 'object' || depth > maxDepth) return false;
-    
-    if (Array.isArray(obj) && obj.length > 0 && obj[0]?.node) {
-      return true;
+  function deepSearchForEdges(obj, depth = 0, maxDepth = 10) {
+    if (depth > maxDepth || !obj || typeof obj !== 'object') {
+      return [];
     }
     
+    let results = [];
+    
+    // If this object has an edges array, check it
+    if (Array.isArray(obj.edges)) {
+      results = [...obj.edges];
+    }
+    
+    // Recursively search nested objects
     for (const key in obj) {
-      if (key === 'edges' && Array.isArray(obj[key])) {
-        return true;
-      }
-      if (typeof obj[key] === 'object') {
-        if (searchForEdges(obj[key], depth + 1, maxDepth)) {
-          return true;
+      if (obj.hasOwnProperty(key)) {
+        const value = obj[key];
+        if (typeof value === 'object' && value !== null) {
+          results = results.concat(deepSearchForEdges(value, depth + 1, maxDepth));
         }
       }
     }
     
-    return false;
+    return results;
   }
+  
+  // ============= FALLBACK: STATIC DATA CHECK =============
+  
+  // Also check for any initial data that might be in window
+  setTimeout(() => {
+    console.log('🔍 [Fallback] Checking for static data in window object...');
+    
+    // Check window._sharedData
+    if (window._sharedData?.entry_data) {
+      console.log('📋 [Fallback] Found _sharedData.entry_data');
+      const entryData = window._sharedData.entry_data;
+      
+      ['ProfilePage', 'CollectionPage', 'SavedPage', 'PostPage'].forEach(pageType => {
+        if (entryData[pageType]?.[0]?.graphql) {
+          console.log(`✅ [Fallback] Checking ${pageType}...`);
+          const graphql = entryData[pageType][0].graphql;
+          
+          // Look for edges in various locations
+          const possiblePaths = [
+            graphql?.user?.edge_saved_media?.edges,
+            graphql?.user?.edge_owner_to_timeline_media?.edges,
+            graphql?.shortcode_media && [{ node: graphql.shortcode_media }],
+            graphql?.edges
+          ];
+          
+          possiblePaths.forEach(edges => {
+            if (edges && edges.length > 0) {
+              const videos = extractVideosFromEdges(edges);
+              if (videos.length > 0) {
+                console.log(`🎉 [Fallback] Found ${videos.length} videos in ${pageType}`);
+                videos.forEach(video => {
+                  if (!collectedVideos.some(v => v.shortcode === video.shortcode)) {
+                    collectedVideos.push(video);
+                  }
+                });
+              }
+            }
+          });
+        }
+      });
+    }
+    
+    // Send final results
+    if (collectedVideos.length > 0) {
+      window.postMessage({
+        type: 'INSTAGRAM_VIDEOS_FOUND',
+        videos: collectedVideos,
+        source: 'static_data_check'
+      }, '*');
+      console.log(`✅ [Complete] Total videos collected: ${collectedVideos.length}`);
+    } else {
+      window.postMessage({
+        type: 'INSTAGRAM_VIDEOS_ERROR',
+        error: 'No videos found. Try scrolling or refreshing the page.'
+      }, '*');
+      console.log('⚠️ [Complete] No videos found in any source');
+    }
+  }, 2000);
+  
+  console.log('✅ [Page Script] Network interception active. Waiting for Instagram to load data...');
+  
 })();
