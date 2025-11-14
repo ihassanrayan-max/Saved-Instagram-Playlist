@@ -2,21 +2,29 @@ import { createRoot } from 'react-dom/client';
 import { ExtensionOverlay } from './components/ExtensionOverlay';
 import './index.css';
 
-// Wait for page to load
+// Robust init that waits for <body> and avoids duplicate mounts
 const init = () => {
-  // Create container for our overlay
+  // Avoid duplicate mounts
+  if (document.getElementById('instagram-playlist-extension')) return;
+
+  // Ensure body exists (run_at: document_start safety)
+  if (!document.body) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init, { once: true });
+    } else {
+      // Edge case: body still not available; retry shortly
+      setTimeout(init, 50);
+    }
+    return;
+  }
+
   const container = document.createElement('div');
   container.id = 'instagram-playlist-extension';
   document.body.appendChild(container);
 
-  // Mount React component
   const root = createRoot(container);
   root.render(<ExtensionOverlay />);
 };
 
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
-}
+// Start immediately; will self-defer until safe
+init();
