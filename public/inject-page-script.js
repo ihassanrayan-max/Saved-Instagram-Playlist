@@ -57,6 +57,12 @@
   
   function processGraphQLResponse(data) {
     try {
+      console.log('🔍 [GraphQL] Full response structure:', JSON.stringify(data, null, 2).substring(0, 1000) + '...');
+      console.log('🔍 [GraphQL] Response top-level keys:', Object.keys(data));
+      if (data.data) {
+        console.log('🔍 [GraphQL] data object keys:', Object.keys(data.data));
+      }
+      
       // Instagram GraphQL responses can have various structures
       // Let's search for video data in common locations
       
