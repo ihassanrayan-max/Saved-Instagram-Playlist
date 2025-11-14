@@ -76,6 +76,25 @@ export const ExtensionOverlay = () => {
     }
   };
   
+  const handleFallback = async () => {
+    setIsCollecting(true);
+    try {
+      const detector = new VideoDetector();
+      const detected = detector.detectVideos();
+      if (detected.length === 0) {
+        alert('No posts detected. Open a saved collection and scroll, then try again.');
+        return;
+      }
+      setVideos(detected);
+      setShowPlayer(true);
+    } catch (e) {
+      console.error('Fallback scan failed', e);
+      alert('Fallback scan failed. Try reloading the page.');
+    } finally {
+      setIsCollecting(false);
+    }
+  };
+  
   const handleClearCache = () => {
     const detector = new VideoDetector();
     detector.clearCache();
@@ -126,6 +145,16 @@ export const ExtensionOverlay = () => {
                   Enable Playlist
                 </>
               )}
+            </Button>
+            
+            <Button
+              onClick={handleFallback}
+              disabled={isCollecting}
+              variant="secondary"
+              className="font-medium px-6 py-2 rounded-full transition-all"
+              title="Use DOM scan and open posts in fallback player"
+            >
+              Fallback Player
             </Button>
             
             <Button

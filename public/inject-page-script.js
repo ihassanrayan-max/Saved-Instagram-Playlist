@@ -9,6 +9,8 @@
   const MAX_COLLECTION_TIME = 30000; // 30 seconds
   const SCROLL_INTERVAL = 500;
   const SCROLL_DURATION = 15000;
+  // DOM scan interval id for fallback
+  let domScanInterval = null;
   
   // ============= PERSISTENCE =============
   // Load previously collected videos from session storage
@@ -38,16 +40,24 @@
     const clonedResponse = response.clone();
     const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
     
-    // Process ALL responses with JSON content-type
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
+    // Try to parse JSON regardless of content-type (IG sometimes mislabels)
+    try {
+      const urlShort = url.length > 80 ? url.substring(0, 80) + '...' : url;
+      // First attempt standard JSON parse
+      const data = await response.clone().json();
+      console.log(`🌐 [Intercept] Fetch: ${urlShort}`);
+      processResponse(data, url);
+    } catch (e1) {
       try {
-        const data = await clonedResponse.json();
-        const urlShort = url.length > 80 ? url.substring(0, 80) + '...' : url;
-        console.log(`🌐 [Intercept] Fetch: ${urlShort}`);
-        processResponse(data, url);
-      } catch (e) {
-        // Silently skip non-JSON or empty responses
+        const text = await response.clone().text();
+        if (text && text.trim().startsWith('{')) {
+          const data = JSON.parse(text);
+          const urlShort = url.length > 80 ? url.substring(0, 80) + '...' : url;
+          console.log(`🌐 [Intercept] Fetch(text): ${urlShort}`);
+          processResponse(data, url);
+        }
+      } catch (e2) {
+        // Not JSON – ignore
       }
     }
     
@@ -65,16 +75,16 @@
   
   XMLHttpRequest.prototype.send = function(...args) {
     this.addEventListener('load', function() {
-      const contentType = this.getResponseHeader('content-type') || '';
-      if (contentType.includes('application/json')) {
-        try {
-          const data = JSON.parse(this.responseText);
-          const urlShort = this._url.length > 80 ? this._url.substring(0, 80) + '...' : this._url;
+      try {
+        const urlShort = this._url && this._url.length > 80 ? this._url.substring(0, 80) + '...' : this._url;
+        const text = this.responseText;
+        if (text && text.trim().startsWith('{')) {
+          const data = JSON.parse(text);
           console.log(`🌐 [Intercept] XHR: ${urlShort}`);
           processResponse(data, this._url);
-        } catch (e) {
-          // Silently skip non-JSON or empty responses
         }
+      } catch (e) {
+        // Ignore non-JSON responses
       }
     });
     return originalSend.apply(this, args);
@@ -134,19 +144,7 @@
       
       // Deduplicate and add to collection
       if (videos.length > 0) {
-        let newCount = 0;
-        videos.forEach(video => {
-          if (!collectedVideos.some(v => v.shortcode === video.shortcode)) {
-            collectedVideos.push(video);
-            newCount++;
-          }
-        });
-        
-        if (newCount > 0) {
-          console.log(`🎉 [Collector] Added ${newCount} new videos (total: ${collectedVideos.length})`);
-          persistVideos();
-          sendUpdate();
-        }
+        addVideos(videos);
       }
     } catch (error) {
       console.error('❌ [Processor] Error processing response:', error);
@@ -288,6 +286,21 @@
     return path.split('.').reduce((current, key) => current?.[key], obj);
   }
   
+  function addVideos(videos) {
+    let newCount = 0;
+    videos.forEach(video => {
+      if (video && video.shortcode && !collectedVideos.some(v => v.shortcode === String(video.shortcode))) {
+        collectedVideos.push({ ...video, shortcode: String(video.shortcode) });
+        newCount++;
+      }
+    });
+    if (newCount > 0) {
+      console.log(`🎉 [Collector] Added ${newCount} new videos (total: ${collectedVideos.length})`);
+      persistVideos();
+      sendUpdate();
+    }
+  }
+  
   function sendUpdate() {
     window.postMessage({
       type: 'INSTAGRAM_VIDEOS_FOUND',
@@ -302,6 +315,58 @@
       error: message,
       suggestions: suggestions || []
     }, '*');
+  }
+  
+  // DOM-based fallback: scan anchors for post/reel links
+  function extractFromLink(link) {
+    try {
+      const href = link.href || link.getAttribute('href') || '';
+      const m = href.match(/\/(p|reel)\/([^\/\?]+)/);
+      if (!m) return null;
+      const shortcode = m[2];
+      const img = link.querySelector('img');
+      const thumbnail = img?.src || img?.getAttribute('srcset')?.split(' ')[0] || null;
+      const isReel = href.includes('/reel/');
+      const hasVideoIcon = !!link.querySelector('svg[aria-label*="Video"], svg[aria-label*="Reel"], [aria-label*="Video"], [aria-label*="Reel"]');
+      const isVideo = isReel || hasVideoIcon;
+      if (!isVideo) return null;
+      return {
+        shortcode: String(shortcode),
+        videoUrl: null,
+        postUrl: `https://www.instagram.com/p/${shortcode}/`,
+        thumbnail, thumbnailUrl: thumbnail,
+        caption: '', username: '', timestamp: Date.now()/1000,
+        needsDash: false
+      };
+    } catch (e) { return null; }
+  }
+  
+  function scanDomForPosts() {
+    const found = [];
+    const links = document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]');
+    links.forEach((link) => {
+      const v = extractFromLink(link);
+      if (v) found.push(v);
+    });
+    return found;
+  }
+  
+  function startDomScan() {
+    if (domScanInterval) clearInterval(domScanInterval);
+    domScanInterval = setInterval(() => {
+      if (!isCollecting) return;
+      const posts = scanDomForPosts();
+      if (posts.length) addVideos(posts);
+    }, 1200);
+    console.log('🔎 [DOM] Fallback DOM scan active...');
+  }
+  
+  function stopDomScan() {
+    if (domScanInterval) {
+      clearInterval(domScanInterval);
+      domScanInterval = null;
+      console.log('🛑 [DOM] Fallback DOM scan stopped');
+    }
   }
   
   // ============= AUTO-SCROLL TO TRIGGER LOADS =============
@@ -343,6 +408,8 @@
     
     // Start auto-scroll to trigger Instagram to load more content
     autoScroll();
+    // Start fallback DOM scanning in parallel
+    startDomScan();
     
     // Send initial update if we have cached videos
     if (collectedVideos.length > 0) {
@@ -358,14 +425,16 @@
   function stopCollection() {
     console.log('🏁 [Collector] Stopping collection...');
     isCollecting = false;
+    // Stop DOM scanning fallback
+    stopDomScan();
     
     if (collectedVideos.length === 0) {
       sendError(
         'No videos found in this collection.',
         [
-          'Make sure you\'re on a saved collection page with video posts',
-          'Try scrolling manually to load more content',
-          'Some videos may use DASH streaming (not yet supported)',
+          'Ensure you opened a Saved collection (with video posts)',
+          'Scroll the page to load items, then retry',
+          'Some videos may be DASH-only; fallback player will open post URLs',
           'Try refreshing the page and enabling the playlist again'
         ]
       );
