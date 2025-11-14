@@ -30,7 +30,8 @@ export class VideoDetector {
       const messageHandler = (event: MessageEvent) => {
         if (event.source !== window) return;
         
-        if (event.data.type === 'INSTAGRAM_VIDEO_DATA') {
+        // Handle both old and new message types
+        if (event.data.type === 'INSTAGRAM_VIDEO_DATA' || event.data.type === 'INSTAGRAM_VIDEOS_FOUND') {
           clearTimeout(timeout);
           window.removeEventListener('message', messageHandler);
           
@@ -40,14 +41,14 @@ export class VideoDetector {
             return;
           }
           
-          console.log(`✅ [VideoDetector] Received ${event.data.videos.length} videos from page script`);
+          console.log(`✅ [VideoDetector] Received ${event.data.videos.length} videos from page script (source: ${event.data.source || 'unknown'})`);
           
           this.videos = event.data.videos.map((v: any, index: number) => ({
             id: `video-${index}-${Date.now()}`,
             shortcode: v.shortcode,
             postUrl: v.postUrl,
             videoUrl: v.videoUrl,
-            thumbnailUrl: v.thumbnailUrl,
+            thumbnailUrl: v.thumbnailUrl || v.thumbnail,
             username: v.username,
             caption: v.caption,
             isLoading: false,
@@ -55,6 +56,11 @@ export class VideoDetector {
           }));
           
           resolve(this.videos);
+        } else if (event.data.type === 'INSTAGRAM_VIDEOS_ERROR') {
+          clearTimeout(timeout);
+          window.removeEventListener('message', messageHandler);
+          console.error('❌ [VideoDetector] Page script error:', event.data.error);
+          resolve([]);
         }
       };
       
