@@ -1,16 +1,16 @@
-// ============= BULLETPROOF INSTAGRAM VIDEO COLLECTOR =============
-// Intercepts ALL JSON responses, deep-searches for video data, auto-scrolls, and provides robust fallbacks
+// ============= COMPREHENSIVE INSTAGRAM VIDEO COLLECTOR =============
 (function() {
   console.log('🚀 [Collector] Starting comprehensive Instagram video collection...');
   
   let collectedVideos = [];
   let isCollecting = false;
   let collectionStartTime = 0;
-  const MAX_COLLECTION_TIME = 30000; // 30 seconds
+  let collectionDuration = 30000; // Default 30s, configurable
+  let collectionMode = 'normal'; // 'normal' | 'forceDom'
   const SCROLL_INTERVAL = 500;
   const SCROLL_DURATION = 15000;
-  // DOM scan interval id for fallback
   let domScanInterval = null;
+  let videoObserver = null;
   
   // ============= PERSISTENCE =============
   // Load previously collected videos from session storage
@@ -32,12 +32,54 @@
     }
   }
   
-  // ============= NETWORK INTERCEPTION (ALL JSON RESPONSES) =============
+  // ============= PROACTIVE API PROBING =============
+  async function probeSavedEndpoints() {
+    console.log('🔬 [Probe] Attempting to fetch from Saved API endpoints...');
+    
+    const csrfToken = document.cookie.match(/csrftoken=([^;]+)/)?.[1];
+    if (!csrfToken) {
+      console.log('⚠️ [Probe] No CSRF token found, skipping API probes');
+      return;
+    }
+    
+    const appIdMeta = document.querySelector('meta[property="al:ios:app_store_id"]');
+    const appId = appIdMeta?.getAttribute('content') || '936619743392459';
+    
+    const headers = {
+      'X-CSRFToken': csrfToken,
+      'X-IG-App-ID': appId,
+      'X-Requested-With': 'XMLHttpRequest'
+    };
+    
+    const collectionMatch = window.location.pathname.match(/\/saved\/([^\/]+)/);
+    const collectionId = collectionMatch?.[1];
+    
+    const endpoints = [
+      '/api/v1/feed/saved/',
+      '/api/v1/feed/saved/posts/',
+      collectionId ? `/api/v1/feed/collection/${collectionId}/posts/` : null
+    ].filter(Boolean);
+    
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`🔬 [Probe] Trying ${endpoint}...`);
+        const response = await fetch(endpoint, { headers });
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ [Probe] Got data from ${endpoint}`);
+          processResponse(data, endpoint);
+        }
+      } catch (e) {
+        console.log(`⚠️ [Probe] ${endpoint} failed:`, e.message);
+      }
+    }
+  }
+  
+  // ============= NETWORK INTERCEPTION =============
   
   const originalFetch = window.fetch;
   window.fetch = async function(...args) {
     const response = await originalFetch.apply(this, args);
-    const clonedResponse = response.clone();
     const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
     
     // Try to parse JSON regardless of content-type (IG sometimes mislabels)
@@ -76,16 +118,12 @@
   XMLHttpRequest.prototype.send = function(...args) {
     this.addEventListener('load', function() {
       try {
-        const urlShort = this._url && this._url.length > 80 ? this._url.substring(0, 80) + '...' : this._url;
         const text = this.responseText;
         if (text && text.trim().startsWith('{')) {
           const data = JSON.parse(text);
-          console.log(`🌐 [Intercept] XHR: ${urlShort}`);
           processResponse(data, this._url);
         }
-      } catch (e) {
-        // Ignore non-JSON responses
-      }
+      } catch (e) {}
     });
     return originalSend.apply(this, args);
   };
