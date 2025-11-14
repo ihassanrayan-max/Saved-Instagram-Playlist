@@ -14,7 +14,8 @@ const filesToCopy = [
   'icon16.png',
   'icon48.png',
   'icon128.png',
-  'robots.txt'
+  'robots.txt',
+  'inject-page-script.js'
 ];
 
 console.log('📦 Building Chrome Extension...\n');
