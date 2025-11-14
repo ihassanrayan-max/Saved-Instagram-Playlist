@@ -1,25 +1,29 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Loader2 } from 'lucide-react';
+import { Play, Loader2, Clock, Grid, ExternalLink } from 'lucide-react';
 import { VideoPlayer } from './VideoPlayer';
 import { VideoDetector } from '@/utils/videoDetector';
-import { fetchVideoUrl } from '@/utils/videoFetcher';
 import type { VideoData } from '@/utils/videoDetector';
 
 export const ExtensionOverlay = () => {
-  const [isEnabled, setIsEnabled] = useState(false);
+  const [isOnSavedPage, setIsOnSavedPage] = useState(false);
   const [isCollecting, setIsCollecting] = useState(false);
   const [videos, setVideos] = useState<VideoData[]>([]);
   const [videoCount, setVideoCount] = useState(0);
   const [showPlayer, setShowPlayer] = useState(false);
+  const [extendedScan, setExtendedScan] = useState(false);
+  const [forceIncludePosts, setForceIncludePosts] = useState(false);
 
   useEffect(() => {
-    // Check if we're on a saved collection page
-    const isCollectionPage = window.location.pathname.includes('/saved/');
-    setIsEnabled(isCollectionPage);
+    const pathname = window.location.pathname;
+    const isCollectionPage = pathname.includes('/saved');
+    setIsOnSavedPage(isCollectionPage);
   }, []);
 
-  // Comprehensive video collection with progress tracking
+  const handleGoToSaved = () => {
+    window.location.href = 'https://www.instagram.com/saved/';
+  };
+
   const handleEnable = async () => {
     console.log('🚀 Starting comprehensive video collection...');
     setIsCollecting(true);
@@ -27,14 +31,19 @@ export const ExtensionOverlay = () => {
     
     const detector = new VideoDetector();
 
+    const options = {
+      durationMs: extendedScan ? 60000 : 30000,
+      mode: forceIncludePosts ? 'forceDom' : 'normal'
+    };
+    
+    console.log('📊 Collection options:', options);
+    window.postMessage({ type: 'START_COLLECTION', options }, '*');
+
     try {
-      // Progress tracking
       const progressInterval = setInterval(() => {
-        // Videos are updated via the detector
-        setVideoCount(prev => prev); // Trigger re-render
+        setVideoCount(prev => prev);
       }, 500);
       
-      // Use the new extraction method with extended timeout
       const detectedVideos = await detector.extractViaPageContext();
       
       clearInterval(progressInterval);
@@ -45,7 +54,11 @@ export const ExtensionOverlay = () => {
           '• This collection has no video posts\n' +
           '• Instagram changed their API structure\n' +
           '• Content hasn\'t loaded yet\n\n' +
-          'Try scrolling manually first, then click OK to retry, or Cancel to abort.'
+          'Try:\n' +
+          '• Scrolling manually first\n' +
+          '• Enabling "Extended Scan (60s)"\n' +
+          '• Enabling "Force Include Posts"\n\n' +
+          'Click OK to retry, or Cancel to abort.'
         );
         
         if (retry) {
@@ -76,98 +89,76 @@ export const ExtensionOverlay = () => {
     }
   };
   
-  const handleFallback = async () => {
-    setIsCollecting(true);
-    try {
-      const detector = new VideoDetector();
-      const detected = detector.detectVideos();
-      if (detected.length === 0) {
-        alert('No posts detected. Open a saved collection and scroll, then try again.');
-        return;
-      }
-      setVideos(detected);
-      setShowPlayer(true);
-    } catch (e) {
-      console.error('Fallback scan failed', e);
-      alert('Fallback scan failed. Try reloading the page.');
-    } finally {
-      setIsCollecting(false);
-    }
-  };
-  
   const handleClearCache = () => {
     const detector = new VideoDetector();
     detector.clearCache();
-    alert('Cache cleared. Reload the page to start fresh.');
+    setVideos([]);
+    setVideoCount(0);
+    alert('Cache cleared. Videos will be freshly collected on next scan.');
   };
-
-  if (!isEnabled) {
-    return null;
-  }
 
   if (showPlayer) {
     return <VideoPlayer videos={videos} onClose={() => setShowPlayer(false)} />;
   }
 
+  if (!isOnSavedPage) {
+    return (
+      <div className="fixed bottom-8 right-8 z-[9999] animate-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-gradient-to-br from-primary/10 to-accent/10 backdrop-blur-lg border border-primary/20 rounded-2xl p-6 shadow-2xl max-w-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-3 bg-primary/20 rounded-xl">
+              <ExternalLink className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg">Navigate to Saved</h3>
+              <p className="text-sm text-muted-foreground">Open a saved collection to start</p>
+            </div>
+          </div>
+          <Button onClick={handleGoToSaved} className="w-full gap-2">
+            <ExternalLink className="w-4 h-4" />
+            Go to Saved Collections
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed bottom-8 right-8 z-[9999] animate-in slide-in-from-bottom-4 duration-500">
-      <div className="bg-glass backdrop-blur-xl border border-glass-border rounded-2xl p-6 shadow-2xl">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-instagram-gradient flex items-center justify-center">
-            <Play className="h-6 w-6 text-white fill-white" />
+      <div className="bg-gradient-to-br from-primary/10 to-accent/10 backdrop-blur-lg border border-primary/20 rounded-2xl p-6 shadow-2xl max-w-sm space-y-4">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-3 bg-primary/20 rounded-xl">
+            <Play className="w-6 h-6 text-primary" />
           </div>
-          
-          <div className="text-center">
-            <h3 className="text-white font-semibold text-lg mb-1">
-              Video Playlist
-            </h3>
-            <p className="text-white/70 text-sm">
-              {isCollecting
-                ? `Found ${videoCount} videos...`
-                : 'Turn this collection into a playlist'}
-            </p>
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              onClick={handleEnable}
-              disabled={isCollecting}
-              className="bg-instagram-gradient hover:opacity-90 text-white font-medium px-6 py-2 rounded-full transition-all"
-            >
-              {isCollecting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Collecting...
-                </>
-              ) : (
-                <>
-                  <Play className="mr-2 h-4 w-4" />
-                  Enable Playlist
-                </>
-              )}
-            </Button>
-            
-            <Button
-              onClick={handleFallback}
-              disabled={isCollecting}
-              variant="secondary"
-              className="font-medium px-6 py-2 rounded-full transition-all"
-              title="Use DOM scan and open posts in fallback player"
-            >
-              Fallback Player
-            </Button>
-            
-            <Button
-              onClick={handleClearCache}
-              variant="ghost"
-              size="sm"
-              className="text-white/70 hover:text-white"
-              title="Clear cached videos and start fresh"
-            >
-              Clear Cache
-            </Button>
+          <div>
+            <h3 className="font-semibold text-lg">Video Playlist</h3>
+            <p className="text-sm text-muted-foreground">Transform saved posts into a playlist</p>
           </div>
         </div>
+
+        <div className="space-y-2 p-4 bg-background/50 rounded-lg border border-border/50">
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input type="checkbox" checked={extendedScan} onChange={(e) => setExtendedScan(e.target.checked)} className="w-4 h-4 rounded border-primary/20 text-primary focus:ring-primary" />
+            <Clock className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+            <span className="text-sm">Extended Scan (60s)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input type="checkbox" checked={forceIncludePosts} onChange={(e) => setForceIncludePosts(e.target.checked)} className="w-4 h-4 rounded border-primary/20 text-primary focus:ring-primary" />
+            <Grid className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+            <span className="text-sm">Force Include Posts</span>
+          </label>
+        </div>
+
+        <div className="space-y-2">
+          <Button onClick={handleEnable} disabled={isCollecting} className="w-full gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold" size="lg">
+            {isCollecting ? (<><Loader2 className="w-5 h-5 animate-spin" />Collecting Videos{videoCount > 0 ? ` (${videoCount})` : '...'}</>) : (<><Play className="w-5 h-5" />Enable Playlist</>)}
+          </Button>
+          <Button onClick={handleClearCache} variant="outline" className="w-full" size="sm">Clear Cache</Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground text-center">
+          {extendedScan || forceIncludePosts ? <>Advanced options enabled. This may take longer.</> : <>Tip: Enable options above for better results</>}
+        </p>
       </div>
     </div>
   );
