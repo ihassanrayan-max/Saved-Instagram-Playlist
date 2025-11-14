@@ -19,32 +19,67 @@ export const ExtensionOverlay = () => {
     setIsEnabled(isCollectionPage);
   }, []);
 
-  // Phase 7: Extract videos using page context injection
+  // Comprehensive video collection with progress tracking
   const handleEnable = async () => {
-    console.log('🚀 [Phase 7] Starting video collection with page script injection...');
+    console.log('🚀 Starting comprehensive video collection...');
     setIsCollecting(true);
+    setVideoCount(0);
+    
     const detector = new VideoDetector();
 
     try {
-      // Use the new extraction method that bypasses CORS and detection issues
+      // Progress tracking
+      const progressInterval = setInterval(() => {
+        // Videos are updated via the detector
+        setVideoCount(prev => prev); // Trigger re-render
+      }, 500);
+      
+      // Use the new extraction method with extended timeout
       const detectedVideos = await detector.extractViaPageContext();
       
+      clearInterval(progressInterval);
+      
       if (detectedVideos.length === 0) {
-        alert('No videos found in this collection. Make sure you\'re on a saved collection page with video posts.');
+        const retry = confirm(
+          'No videos found. This could mean:\n\n' +
+          '• This collection has no video posts\n' +
+          '• Instagram changed their API structure\n' +
+          '• Content hasn\'t loaded yet\n\n' +
+          'Try scrolling manually first, then click OK to retry, or Cancel to abort.'
+        );
+        
+        if (retry) {
+          setIsCollecting(false);
+          setTimeout(() => handleEnable(), 1000);
+          return;
+        }
+        
         setIsCollecting(false);
         return;
       }
 
-      console.log(`✅ [Phase 7] Successfully extracted ${detectedVideos.length} videos with URLs!`);
+      console.log(`✅ Successfully collected ${detectedVideos.length} videos!`);
+      
+      // Filter out videos without URLs (will use fallback)
+      const videosWithUrls = detectedVideos.filter(v => v.videoUrl);
+      const videosNeedingFallback = detectedVideos.filter(v => !v.videoUrl);
+      
+      console.log(`📊 Stats: ${videosWithUrls.length} direct MP4, ${videosNeedingFallback.length} need fallback`);
       
       setVideos(detectedVideos);
       setShowPlayer(true);
     } catch (error) {
-      console.error('❌ [Phase 7] Error in collection process:', error);
-      alert('An error occurred while collecting videos. Check console for details.');
+      console.error('❌ Error in collection process:', error);
+      alert('An error occurred. Check the console for details, then try refreshing the page.');
     } finally {
       setIsCollecting(false);
     }
+  };
+  
+  const handleClearCache = () => {
+    const detector = new VideoDetector();
+    detector.clearCache();
+    alert('Cache cleared. Reload the page to start fresh.');
   };
 
   if (!isEnabled) {
@@ -74,23 +109,35 @@ export const ExtensionOverlay = () => {
             </p>
           </div>
 
-          <Button
-            onClick={handleEnable}
-            disabled={isCollecting}
-            className="bg-instagram-gradient hover:opacity-90 text-white font-medium px-6 py-2 rounded-full transition-all"
-          >
-            {isCollecting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Collecting...
-              </>
-            ) : (
-              <>
-                <Play className="mr-2 h-4 w-4" />
-                Enable Playlist
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleEnable}
+              disabled={isCollecting}
+              className="bg-instagram-gradient hover:opacity-90 text-white font-medium px-6 py-2 rounded-full transition-all"
+            >
+              {isCollecting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Collecting...
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-4 w-4" />
+                  Enable Playlist
+                </>
+              )}
+            </Button>
+            
+            <Button
+              onClick={handleClearCache}
+              variant="ghost"
+              size="sm"
+              className="text-white/70 hover:text-white"
+              title="Clear cached videos and start fresh"
+            >
+              Clear Cache
+            </Button>
+          </div>
         </div>
       </div>
     </div>

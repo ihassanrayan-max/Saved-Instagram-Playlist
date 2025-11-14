@@ -33,10 +33,14 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
   const [progress, setProgress] = useState(0);
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [useFallback, setUseFallback] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const currentVideo = videos[currentIndex];
+  const shouldUseFallback = useFallback || !currentVideo?.videoUrl || videoError;
 
   // Phase 6: Add metadata loading and error handling
   useEffect(() => {
@@ -52,6 +56,8 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
     const handleError = (e: Event) => {
       console.error('❌ [VideoPlayer] Video error:', e);
       console.error('Video source:', currentVideo?.videoUrl);
+      setVideoError(true);
+      setUseFallback(true);
     };
 
     const updateProgress = () => {
@@ -64,8 +70,17 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
 
     const handleEnded = () => {
       if (isLoop) {
-        video.currentTime = 0;
-        video.play();
+        if (shouldUseFallback && iframeRef.current) {
+          // Reload iframe to replay
+          const src = iframeRef.current.src;
+          iframeRef.current.src = '';
+          setTimeout(() => {
+            if (iframeRef.current) iframeRef.current.src = src;
+          }, 100);
+        } else if (video) {
+          video.currentTime = 0;
+          video.play();
+        }
       } else {
         playNext();
       }
@@ -102,6 +117,9 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
   };
 
   const playNext = () => {
+    setVideoError(false);
+    setUseFallback(false);
+    
     if (isShuffle) {
       const randomIndex = Math.floor(Math.random() * videos.length);
       setCurrentIndex(randomIndex);
@@ -109,13 +127,23 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
       setCurrentIndex((prev) => (prev + 1) % videos.length);
     }
     setIsPlaying(true);
-    setTimeout(() => videoRef.current?.play(), 100);
+    setTimeout(() => {
+      if (!shouldUseFallback) {
+        videoRef.current?.play();
+      }
+    }, 100);
   };
 
   const playPrevious = () => {
+    setVideoError(false);
+    setUseFallback(false);
     setCurrentIndex((prev) => (prev - 1 + videos.length) % videos.length);
     setIsPlaying(true);
-    setTimeout(() => videoRef.current?.play(), 100);
+    setTimeout(() => {
+      if (!shouldUseFallback) {
+        videoRef.current?.play();
+      }
+    }, 100);
   };
 
   const toggleFullscreen = () => {
@@ -145,10 +173,16 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
   };
 
   const playVideo = (index: number) => {
+    setVideoError(false);
+    setUseFallback(false);
     setCurrentIndex(index);
     setIsPlaying(true);
     setShowPlaylist(false);
-    setTimeout(() => videoRef.current?.play(), 100);
+    setTimeout(() => {
+      if (!shouldUseFallback) {
+        videoRef.current?.play();
+      }
+    }, 100);
   };
 
   return (
@@ -169,16 +203,51 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
 
         {/* Video Container */}
         <div className="relative aspect-video bg-black rounded-lg overflow-hidden shadow-2xl">
-          <video
-            ref={videoRef}
-            src={currentVideo?.videoUrl}
-            className="w-full h-full object-contain"
-            playsInline
-            muted={isMuted}
-          />
+          {/* Native Video Player */}
+          {!shouldUseFallback && currentVideo?.videoUrl && (
+            <video
+              ref={videoRef}
+              src={currentVideo.videoUrl}
+              className="w-full h-full object-contain"
+              playsInline
+              muted={isMuted}
+              onError={() => {
+                console.error('❌ [Player] Video failed to load, switching to fallback');
+                setVideoError(true);
+                setUseFallback(true);
+              }}
+            />
+          )}
+          
+          {/* Instagram Embed Fallback */}
+          {shouldUseFallback && currentVideo?.postUrl && (
+            <div className="w-full h-full flex items-center justify-center bg-black">
+              <div className="text-center p-8">
+                <p className="text-white mb-4">
+                  ⚠️ Direct playback unavailable. Opening Instagram post...
+                </p>
+                <iframe
+                  ref={iframeRef}
+                  src={`${currentVideo.postUrl}embed/captioned/`}
+                  className="w-full h-[600px] border-0"
+                  allowFullScreen
+                  allow="autoplay; encrypted-media"
+                  onLoad={() => console.log('✅ [Player] Iframe loaded')}
+                  onError={() => console.error('❌ [Player] Iframe failed to load')}
+                />
+                <Button
+                  onClick={() => window.open(currentVideo.postUrl, '_blank')}
+                  className="mt-4 bg-instagram-gradient text-white"
+                >
+                  Open in Instagram
+                </Button>
+              </div>
+            </div>
+          )}
 
-          {/* Controls Overlay */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-6">
+          {/* Controls Overlay - Only show for direct video playback */}
+          {!shouldUseFallback && (
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-6">
             {/* Progress Bar */}
             <Slider
               value={[progress]}
@@ -294,12 +363,44 @@ export const VideoPlayer = ({ videos, onClose }: VideoPlayerProps) => {
 
             {/* Video Info */}
             <div className="mt-4 text-white">
-              <p className="font-medium">{currentVideo?.username}</p>
-              <p className="text-sm text-white/70 truncate">
-                {currentVideo?.caption}
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="font-medium">{currentVideo?.username}</p>
+                  <p className="text-sm text-white/70 truncate">
+                    {currentVideo?.caption}
+                  </p>
+                </div>
+                {shouldUseFallback && (
+                  <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded">
+                    Fallback Mode
+                  </span>
+                )}
+                {!shouldUseFallback && currentVideo?.videoUrl && (
+                  <Button
+                    onClick={() => setUseFallback(true)}
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-white/50 hover:text-white"
+                  >
+                    Use Fallback
+                  </Button>
+                )}
+              </div>
+            </div>
+            </div>
+          )}
+
+          {/* Fallback Mode Info Overlay */}
+          {shouldUseFallback && (
+            <div className="absolute top-4 left-4 right-4 bg-black/80 rounded-lg p-4 text-white">
+              <p className="text-sm">
+                <span className="font-semibold">Fallback Mode Active:</span> Using Instagram embed for playback.
+              </p>
+              <p className="text-xs text-white/70 mt-1">
+                Use the controls within the Instagram embed below. Loop and shuffle still work.
               </p>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Playlist Sidebar */}

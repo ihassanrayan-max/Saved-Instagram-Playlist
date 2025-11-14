@@ -20,11 +20,19 @@ export class VideoDetector {
     console.log('🔮 [VideoDetector] Injecting page script to extract data...');
     
     return new Promise((resolve) => {
+      let lastVideoCount = 0;
+      const progressCallback = (videos: any[]) => {
+        if (videos.length > lastVideoCount) {
+          lastVideoCount = videos.length;
+          console.log(`📊 [Progress] ${videos.length} videos collected...`);
+        }
+      };
+      
       const timeout = setTimeout(() => {
         window.removeEventListener('message', messageHandler);
-        console.warn('⚠️ [VideoDetector] Timeout waiting for page script response');
-        resolve([]);
-      }, 5000);
+        console.warn('⚠️ [VideoDetector] Collection timeout - returning collected videos');
+        resolve(this.videos);
+      }, 35000); // Extended timeout for auto-scroll
 
       // Listen for message from injected script
       const messageHandler = (event: MessageEvent) => {
@@ -32,12 +40,12 @@ export class VideoDetector {
         
         // Handle both old and new message types
         if (event.data.type === 'INSTAGRAM_VIDEO_DATA' || event.data.type === 'INSTAGRAM_VIDEOS_FOUND') {
-          clearTimeout(timeout);
-          window.removeEventListener('message', messageHandler);
-          
           if (event.data.error) {
             console.error('❌ [VideoDetector] Page script error:', event.data.error);
-            resolve([]);
+            if (event.data.suggestions && event.data.suggestions.length > 0) {
+              console.log('💡 [Suggestions]:', event.data.suggestions.join('\n'));
+            }
+            // Don't resolve yet, wait for timeout in case more videos arrive
             return;
           }
           
@@ -47,20 +55,22 @@ export class VideoDetector {
             id: `video-${index}-${Date.now()}`,
             shortcode: v.shortcode,
             postUrl: v.postUrl,
-            videoUrl: v.videoUrl,
+            videoUrl: v.videoUrl || null,
             thumbnailUrl: v.thumbnailUrl || v.thumbnail,
             username: v.username,
             caption: v.caption,
             isLoading: false,
-            error: undefined
+            error: v.needsDash ? 'dash_only' : undefined
           }));
           
-          resolve(this.videos);
+          progressCallback(this.videos);
+          
+          // Keep listening for more updates until timeout
         } else if (event.data.type === 'INSTAGRAM_VIDEOS_ERROR') {
-          clearTimeout(timeout);
-          window.removeEventListener('message', messageHandler);
           console.error('❌ [VideoDetector] Page script error:', event.data.error);
-          resolve([]);
+          if (event.data.suggestions && event.data.suggestions.length > 0) {
+            console.log('💡 [Suggestions]:', event.data.suggestions.join('\n'));
+          }
         }
       };
       
@@ -70,8 +80,17 @@ export class VideoDetector {
       const script = document.createElement('script');
       script.src = chrome.runtime.getURL('inject-page-script.js');
       (document.head || document.documentElement).appendChild(script);
-      script.onload = () => script.remove();
+      script.onload = () => {
+        script.remove();
+        console.log('✅ [VideoDetector] Page script injected successfully');
+      };
     });
+  }
+  
+  // Clear cached videos
+  clearCache(): void {
+    window.postMessage({ type: 'CLEAR_CACHE' }, '*');
+    this.videos = [];
   }
 
   // Phase 1-3: New detection methods (LEGACY - kept for reference)
