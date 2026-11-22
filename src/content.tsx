@@ -1,8 +1,8 @@
 import { createRoot, type Root } from 'react-dom/client';
 import { ExtensionOverlay } from './components/ExtensionOverlay';
 import { Collector } from './instagram/collector';
-import { requestPlayer, type PlayerRequest } from './instagram/playerRequests';
-import { pausePost } from './instagram/playback';
+import { requestPlayer, notifyPlaybackControl, type PlayerRequest } from './instagram/playerRequests';
+import { pausePost, playPost } from './instagram/playback';
 import { extensionCall, extensionContext, isContextInvalidation, listenExtensionEvent, reportExtensionError } from './utils/extensionContext';
 import './index.css';
 
@@ -65,13 +65,19 @@ async function init() {
           case 'GET_COLLECTION_STATE': data = await collector.state(); break;
           case 'NAVIGATE_PLAYLIST': data = await requestPlayer(message.args as unknown as PlayerRequest); break;
           case 'END_PLAYBACK': pausePost(); break;
+          case 'CONTROL_PLAYBACK': {
+            const { name, shortcode, state } = message.args as { name: string; shortcode: string; state: Record<string, unknown> };
+            notifyPlaybackControl(name, state);
+            if (state.isPlaying) playPost(shortcode, Boolean(state.isMuted)); else pausePost(shortcode);
+            break;
+          }
         }
         reply({ ok: true, data });
       } catch (error) {
         if (!isContextInvalidation(error)) reply({ ok: false, error: error instanceof Error ? error.message : 'Command failed.' });
       }
     };
-    if (!['START_COLLECTION', 'STOP_COLLECTION', 'CLEAR_COLLECTION', 'GET_COLLECTION_STATE', 'NAVIGATE_PLAYLIST', 'END_PLAYBACK'].includes(message.type)) return false;
+    if (!['START_COLLECTION', 'STOP_COLLECTION', 'CLEAR_COLLECTION', 'GET_COLLECTION_STATE', 'NAVIGATE_PLAYLIST', 'END_PLAYBACK', 'CONTROL_PLAYBACK'].includes(message.type)) return false;
     void handle();
     return true;
   };

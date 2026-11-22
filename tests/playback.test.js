@@ -9,6 +9,7 @@ const result = await build({ entryPoints: ['src/instagram/playback.ts'], bundle:
     builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `
       export const activeVideo = () => globalThis.videoFixture.video;
       export const currentPostCode = () => globalThis.videoFixture.code;
+      export const setNativeMuted = (video, muted) => { video.muted = muted; if (!muted && video.volume === 0) video.volume = 1; };
     ` }));
   } }],
 });
@@ -119,5 +120,24 @@ test('native navigation waits for Instagram to replace the outgoing video or its
   playback.playPost('next'); assert.equal(video.paused, true); assert.equal(video.muted, true);
   video.currentSrc = 'next.mp4'; video.dispatchEvent(new Event('loadedmetadata'));
   assert.equal(video.paused, false); assert.equal(video.muted, false);
+  unsubscribe();
+});
+test('pause intent stops native autoplay attempts and replacement videos until explicitly resumed', () => {
+  const { unsubscribe, mutate } = setup();
+  playback.playPost('abc'); playback.pausePost('abc');
+  videoFixture.video.play(); assert.equal(videoFixture.video.paused, true);
+  videoFixture.video = new Video(); videoFixture.video.paused = false; mutate();
+  assert.equal(videoFixture.video.paused, true);
+  playback.playPost('abc'); assert.equal(videoFixture.video.paused, false);
+  unsubscribe();
+});
+test('mute toggles the actual video and survives replacement and resumed playback', () => {
+  const { notices, unsubscribe, mutate } = setup();
+  playback.playPost('abc');
+  playback.setPostMuted('abc', true); assert.equal(videoFixture.video.muted, true);
+  assert.equal(notices.at(-1).muted, true);
+  videoFixture.video = new Video(); mutate(); assert.equal(videoFixture.video.muted, true);
+  playback.setPostMuted('abc', false); assert.equal(videoFixture.video.muted, false);
+  assert.equal(notices.at(-1).muted, false);
   unsubscribe();
 });

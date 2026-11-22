@@ -4,6 +4,13 @@ export const playerKey = (tabId, name) => `player_v2:${tabId}:${encodeURICompone
 export const intentKey = tabId => `player_v2_intent:${tabId}`;
 export const documentKey = tabId => `player_v2_document:${tabId}`;
 export const shouldStartPlayback = (state, shortcode) => Boolean(shortcode && state?.isPlaying && state.navigationShortcode === shortcode);
+export function restorePlayback(state, shortcode, reload = false) {
+  const navigation = shouldStartPlayback(state, shortcode);
+  const samePost = Boolean(shortcode && state?.currentShortcode === shortcode);
+  const paused = samePost && state?.playbackIntent === 'paused';
+  const resume = samePost && reload && state?.playbackIntent === 'playing';
+  return { managed: navigation || paused || resume, playing: !paused && (navigation || resume), muted: Boolean(state?.isMuted) };
+}
 
 export async function readPlayer(session, sender, name) {
   const key = playerKey(sender.tab.id, name);

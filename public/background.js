@@ -1,11 +1,22 @@
 import { createRepository } from './playlist-repository.js';
 import { openPlaylistItem } from './play-item.js';
 import { readPlayer, writePlayer } from './player-session.js';
+import { playlistStatus, togglePlaylist } from './playlist-controls.js';
 const library = createRepository(chrome.storage.local);
 let playbackWrites = Promise.resolve();
 
 chrome.runtime.onMessage.addListener((request, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return false;
+  if (request.type === 'PLAYLIST_STATUS' || request.type === 'TOGGLE_PLAYLIST') {
+    const task = playbackWrites.then(async () => {
+      const dependencies = { library, tabs: chrome.tabs, session: chrome.storage.session };
+      if (request.type === 'PLAYLIST_STATUS') return playlistStatus(dependencies, request.args.name);
+      await togglePlaylist(dependencies, request.args.name); return null;
+    });
+    playbackWrites = task.catch(() => {});
+    task.then(data => respond({ ok: true, data }), error => respond({ ok: false, error: error.message }));
+    return true;
+  }
   if (request.type === 'PLAY_ITEM') {
     if (sender.tab) { respond({ ok: false, error: 'Open posts from Playlist Manager.' }); return false; }
     const task = playbackWrites.then(() => openPlaylistItem({ library, tabs: chrome.tabs, session: chrome.storage.session }, request.args));

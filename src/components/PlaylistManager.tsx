@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Plus, Search, Pencil, Trash2, Download, Upload, ListMusic } from 'lucide-react';
+import { Play, Pause, Plus, Search, Pencil, Trash2, Download, Upload, ListMusic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,7 +9,7 @@ import { normalizeItem, validatePlaylists } from '../../public/playlist-model.js
 import { searchLibrary, postTitle } from '../../public/library-view.js';
 import { getAllPlaylists, getActivePlaylistName, setActivePlaylistName, subscribeLibrary, createPlaylist, renamePlaylist, deletePlaylist, addUrlsToPlaylist, removeUrlsFromPlaylist, annotatePlaylistItem, saveAllPlaylists, type PlaylistItem, type PlaylistsData } from '@/utils/playlistStorage';
 import { cn } from '@/lib/utils';
-import { sendExtensionMessage, isExtensionEnvironment } from '@/utils/extensionContext';
+import { sendExtensionMessage, isExtensionEnvironment, listenExtensionEvent } from '@/utils/extensionContext';
 
 type NotesEditor = { name: string; item: PlaylistItem; title: string; notes: string; tags: string; position: string };
 type ImportPreview = { playlists: PlaylistsData; active: string | null };
@@ -23,6 +23,7 @@ export const PlaylistManager = () => {
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [playlistPlaying, setPlaylistPlaying] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [nameDialog, setNameDialog] = useState<'create' | 'rename' | null>(null);
@@ -63,6 +64,20 @@ export const PlaylistManager = () => {
     setPage(0);
     if (query.trim() && postDisclosure.current) postDisclosure.current.open = true;
   }, [query, selected]);
+  useEffect(() => {
+    let disposed = false;
+    const refresh = async () => {
+      if (!selected || active !== selected || !isExtensionEnvironment()) { setPlaylistPlaying(false); return; }
+      try {
+        const response = await sendExtensionMessage({ type: 'PLAYLIST_STATUS', args: { name: selected } });
+        const status = response.data as { state?: { isPlaying?: boolean } } | undefined;
+        if (!disposed && response.ok) setPlaylistPlaying(Boolean(status?.state?.isPlaying));
+      } catch { if (!disposed) setPlaylistPlaying(false); }
+    };
+    void refresh();
+    const unsubscribe = isExtensionEnvironment() ? listenExtensionEvent(() => chrome.storage.onChanged, (_changes, area) => { if (area === 'session') void refresh(); }) : () => {};
+    return () => { disposed = true; unsubscribe(); };
+  }, [selected, active]);
 
 
   const run = async (action: () => Promise<void>, message?: string) => {
@@ -128,7 +143,10 @@ export const PlaylistManager = () => {
           <div><h2 className="text-lg font-semibold">{query.trim() ? 'Search results' : selected || 'Your saved moments'}</h2>
             <p className="text-sm text-muted-foreground">{loading ? 'Loading your library…' : `${results.length.toLocaleString()} ${query.trim() ? 'matches across all playlists' : 'posts in this playlist'}`}</p></div>
           {selected && <div className="flex flex-wrap gap-2">
-            <Button size="sm" disabled={busy || !playlists[selected]?.length} onClick={() => open(selected, playlists[selected][0])}><Play />Play Playlist</Button>
+            <Button size="sm" disabled={busy || !playlists[selected]?.length} onClick={() => run(async () => {
+              const response = await sendExtensionMessage({ type: 'TOGGLE_PLAYLIST', args: { name: selected } });
+              if (!response.ok) throw new Error(response.error || 'Could not control this playlist.');
+            })}>{playlistPlaying ? <Pause /> : <Play />}{playlistPlaying ? 'Pause Playlist' : 'Play Playlist'}</Button>
             <Button variant="outline" size="sm" disabled={busy} onClick={() => run(async () => {
               if (active === selected && isExtensionEnvironment()) {
                 const response = await sendExtensionMessage({ type: 'END_SESSION' });

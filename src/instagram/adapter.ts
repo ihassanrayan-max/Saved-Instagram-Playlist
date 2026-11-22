@@ -43,3 +43,13 @@ export function activeVideo(): HTMLVideoElement | null {
     return area(b) - area(a);
   })[0] || null;
 }
+
+export function setNativeMuted(video: HTMLVideoElement, muted: boolean) {
+  const scope = video.closest('article') || document.querySelector('[role="dialog"]') || document.querySelector('main');
+  const action = muted ? /^(mute|turn off sound)$/i : /^(unmute|turn on sound)$/i;
+  const control = scope && [...scope.querySelectorAll<HTMLElement>('[aria-label]')].find(node => action.test(node.getAttribute('aria-label') || ''));
+  const button = control?.closest<HTMLElement>('button,[role="button"]');
+  if (button) button.click();
+  video.muted = muted;
+  if (!muted && video.volume === 0) video.volume = 1;
+}

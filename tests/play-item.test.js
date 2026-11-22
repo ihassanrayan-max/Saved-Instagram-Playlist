@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { openPlaylistItem } from '../public/play-item.js';
 import { createRepository } from '../public/playlist-repository.js';
 import { memoryStorage } from './helpers.js';
-import { readPlayer, writePlayer, documentKey, playerKey, shouldStartPlayback } from '../public/player-session.js';
+import { readPlayer, writePlayer, documentKey, playerKey, shouldStartPlayback, restorePlayback } from '../public/player-session.js';
+import { togglePlaylist } from '../public/playlist-controls.js';
 
 async function setup(active = [{ id: 10, url: 'https://www.instagram.com/me/saved/' }], existing = []) {
   const library = createRepository(memoryStorage()), session = memoryStorage();
@@ -75,4 +76,23 @@ test('a content player that cannot navigate delegates the reload safely', async 
   fixture.tabs.sendMessage = async () => ({ ok: true, data: 'reload' });
   await openPlaylistItem(fixture, args);
   assert.deepEqual(fixture.updates, [{ id: 10, url: args.url, active: true }]);
+});
+test('an explicit pause is restored on reload and playing sessions restore sound preference', () => {
+  assert.deepEqual(restorePlayback({ currentShortcode: 'second', playbackIntent: 'paused', isPlaying: false, isMuted: true }, 'second', true), { managed: true, playing: false, muted: true });
+  assert.deepEqual(restorePlayback({ currentShortcode: 'second', playbackIntent: 'playing', isPlaying: true, isMuted: false }, 'second', true), { managed: true, playing: true, muted: false });
+  assert.equal(restorePlayback({ currentShortcode: 'second', playbackIntent: 'playing', isPlaying: true }, 'other', true).managed, false);
+});
+test('Settings Play toggles pause and resume at the current item without navigating', async () => {
+  const fixture = await setup([{ id: 10, url: args.url }]);
+  await fixture.library('activate', { name: args.name });
+  await fixture.session.set({ [playerKey(10, args.name)]: { currentIndex: 1, currentShortcode: 'second', isPlaying: true, playbackIntent: 'playing', isMuted: false } });
+  const controls = [];
+  fixture.tabs.sendMessage = async (_id, message) => { controls.push(message); return { ok: true }; };
+  await togglePlaylist(fixture, args.name);
+  assert.equal(controls[0].args.state.playbackIntent, 'paused');
+  assert.equal(fixture.session.rows[playerKey(10, args.name)].isPlaying, false);
+  await togglePlaylist(fixture, args.name);
+  assert.equal(controls[1].args.state.playbackIntent, 'playing');
+  assert.equal(fixture.updates.length, 0);
+  assert.equal(fixture.session.rows[playerKey(10, args.name)].currentIndex, 1);
 });

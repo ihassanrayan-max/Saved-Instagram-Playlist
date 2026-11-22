@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Play, Pause, SkipForward, SkipBack, Shuffle, X, Minimize2, Settings, GripVertical, Loader2 } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Shuffle, X, Minimize2, Settings, GripVertical, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getPlaylist, subscribeLibrary, type PlaylistItem } from '@/utils/playlistStorage';
 import { currentPostCode } from '@/instagram/adapter';
-import { playPost, pausePost, preparePostNavigation, subscribePlayback } from '@/instagram/playback';
+import { playPost, pausePost, setPostMuted, preparePostNavigation, subscribePlayback } from '@/instagram/playback';
 import { normalizeItem } from '../../public/playlist-model.js';
-import { shouldStartPlayback } from '../../public/player-session.js';
+import { restorePlayback } from '../../public/player-session.js';
 import { matchPost, postTitle } from '../../public/library-view.js';
 import { navigatePost } from '@/instagram/navigation';
-import { handlePlayerRequests } from '@/instagram/playerRequests';
+import { handlePlayerRequests, handlePlaybackControls } from '@/instagram/playerRequests';
 import { extensionStorage, sendExtensionMessage, reportExtensionError } from '@/utils/extensionContext';
 
 interface PlaylistMiniPlayerProps { onClose?: () => void }
@@ -18,8 +18,11 @@ interface PlaylistState {
   currentIndex: number; isPlaying: boolean; isShuffle: boolean;
   shuffledOrder: number[]; isMinimized: boolean;
   lastLoadMs?: number;
+  currentShortcode?: string;
+  playbackIntent?: 'playing' | 'paused';
+  isMuted: boolean;
 }
-const initialState = (): PlaylistState => ({ currentIndex: 0, isPlaying: false, isShuffle: false, shuffledOrder: [], isMinimized: false });
+const initialState = (): PlaylistState => ({ currentIndex: 0, isPlaying: false, isShuffle: false, isMuted: false, shuffledOrder: [], isMinimized: false });
 
 export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
@@ -52,12 +55,13 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
         const { navigationShortcode: _navigationShortcode, navigationStartedAt: _navigationStartedAt, ...restored } = saved;
         const code = currentPostCode();
         const index = items.findIndex(item => item.shortcode === code);
+        const restore = restorePlayback(saved, code, (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type === 'reload');
         if (name !== latest.current.playlistName) {
-          managedPlayback.current = shouldStartPlayback(saved, code);
+          managedPlayback.current = restore.managed;
           startedAt.current = managedPlayback.current ? saved.navigationStartedAt || null : null;
         }
         setState(prev => {
-          const next = name === latest.current.playlistName ? prev : { ...initialState(), ...restored, isPlaying: shouldStartPlayback(saved, code) };
+          const next = name === latest.current.playlistName ? prev : { ...initialState(), ...restored, isPlaying: restore.playing, isMuted: restore.muted };
           const order = next.shuffledOrder || [];
           return { ...next, currentIndex: index >= 0 ? index : Math.min(next.currentIndex, Math.max(0, items.length - 1)),
             shuffledOrder: order.length === items.length && new Set(order).size === items.length && order.every(i => i >= 0 && i < items.length) ? order : [] };
@@ -84,6 +88,7 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
     navigating.current = true;
     setTransitioning(true);
     const target = normalizeItem({ url }).shortcode;
+    next = { ...next, currentShortcode: target, playbackIntent: 'playing' };
     pendingTarget.current = target;
     managedPlayback.current = true;
     startedAt.current = Date.now();
@@ -97,7 +102,7 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
       const mode = await navigatePost(url, !prepared);
       if (mode !== 'reload') {
         navigating.current = false; pendingTarget.current = null; setTransitioning(false);
-        playPost(target);
+        playPost(target, next.isMuted);
         // Do not await: popup-initiated requests are acknowledged before the
         // worker can process another playback-state command.
         persist(next).catch(e => setError(e.message));
@@ -116,11 +121,17 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
     const target = normalizeItem({ url: request.url }).shortcode;
     const index = items.findIndex(item => item.shortcode === target);
     if (index < 0) throw new Error('Post no longer exists in this playlist.');
-    const next = { ...initialState(), currentIndex: index, isPlaying: true };
+    const next: PlaylistState = { ...initialState(), currentIndex: index, currentShortcode: target, isPlaying: true, playbackIntent: 'playing', isMuted: Boolean(request.state?.isMuted) };
     latest.current = { state: next, playlist: items, playlistName: request.name };
     setPlaylist(items); setPlaylistName(request.name); setLoaded(true);
     return navigateToUrl(request.url, next, true);
   }), [navigateToUrl]);
+
+  useEffect(() => handlePlaybackControls((name, incoming) => {
+    if (name !== latest.current.playlistName) return;
+    const next = { ...latest.current.state, ...incoming } as PlaylistState;
+    managedPlayback.current = true; latest.current = { ...latest.current, state: next }; setState(next);
+  }), []);
 
   const step = useCallback((direction: number, automatic = false) => {
     const { state: current, playlist: items } = latest.current;
@@ -154,10 +165,13 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
       startedAt.current = null;
       if (elapsed >= 0 && elapsed < 120000) setState(prev => ({ ...prev, lastLoadMs: elapsed }));
     }
+    if (notice.type === 'sound') {
+      setState(prev => prev.isMuted === notice.muted ? prev : { ...prev, isMuted: Boolean(notice.muted) });
+    }
     if (notice.type === 'ended' && current.isPlaying && managedPlayback.current) {
       step(1, true);
     } else if (notice.type === 'play' || notice.type === 'pause') {
-      setState(prev => ({ ...prev, isPlaying: notice.type === 'play' }));
+      if (!navigating.current) setState(prev => ({ ...prev, isPlaying: notice.type === 'play', ...(managedPlayback.current ? { playbackIntent: notice.type === 'play' ? 'playing' : 'paused', currentShortcode: notice.shortcode } : {}) }));
     } else if (notice.type === 'error') {
       setError(notice.message || 'Video unavailable. You can skip to the next post.');
       setState(prev => ({ ...prev, isPlaying: false }));
@@ -166,8 +180,10 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
 
   const code = playlist[state.currentIndex]?.shortcode;
   useEffect(() => {
-    if (!loaded || !code || !state.isPlaying || !managedPlayback.current || currentPostCode() !== code) return;
-    playPost(code);
+    if (!loaded || !code || !managedPlayback.current || currentPostCode() !== code) return;
+    if (state.playbackIntent === 'paused') { pausePost(code); return; }
+    if (!state.isPlaying) return;
+    playPost(code, state.isMuted);
     const timeout = setTimeout(() => {
       if (!document.querySelector('main video, [role="dialog"] video')) {
         setError('No video appeared. This may be a photo, an unavailable post, or a login screen. You can skip to the next post.');
@@ -175,7 +191,7 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
       }
     }, 15000);
     return () => clearTimeout(timeout);
-  }, [loaded, code, state.isPlaying]);
+  }, [loaded, code, state.isPlaying, state.playbackIntent, state.isMuted]);
 
   const handlePlay = () => {
     const { state: current, playlist: items } = latest.current;
@@ -183,10 +199,11 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
     if (!item) return;
     managedPlayback.current = true;
     setError('');
-    if (currentPostCode() === item.shortcode) { setState(prev => ({ ...prev, isPlaying: true })); playPost(item.shortcode); }
+    if (currentPostCode() === item.shortcode) { setState(prev => ({ ...prev, isPlaying: true, playbackIntent: 'playing', currentShortcode: item.shortcode })); playPost(item.shortcode, current.isMuted); }
     else navigateToUrl(item.url, { ...current, isPlaying: true }).catch(() => {});
   };
-  const handlePause = () => { pausePost(latest.current.playlist[latest.current.state.currentIndex]?.shortcode); setState(prev => ({ ...prev, isPlaying: false })); };
+  const handlePause = () => { const shortcode = latest.current.playlist[latest.current.state.currentIndex]?.shortcode; managedPlayback.current = true; pausePost(shortcode); setState(prev => ({ ...prev, isPlaying: false, playbackIntent: 'paused', currentShortcode: shortcode })); };
+  const handleMute = () => { const item = latest.current.playlist[latest.current.state.currentIndex]; if (!item) return; const muted = !latest.current.state.isMuted; setPostMuted(item.shortcode, muted); setState(prev => ({ ...prev, isMuted: muted })); };
   const handleNext = () => step(1);
   const handlePrevious = () => step(-1);
   const handleShuffle = () => setState(prev => {
@@ -289,6 +306,7 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
           <Button size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/10 hover:text-white" aria-label="Previous post" aria-keyshortcuts="Alt+Shift+ArrowLeft" onClick={handlePrevious} disabled={transitioning}><SkipBack /></Button>
           <Button size="icon" className="h-12 w-12 rounded-full bg-white text-zinc-950 hover:bg-white/90" aria-label={state.isPlaying ? 'Pause video' : 'Play video'} onClick={state.isPlaying ? handlePause : handlePlay} disabled={transitioning}>{transitioning ? <Loader2 className="animate-spin" /> : state.isPlaying ? <Pause /> : <Play />}</Button>
           <Button size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/10 hover:text-white" aria-label="Next post" aria-keyshortcuts="Alt+Shift+ArrowRight" onClick={handleNext} disabled={transitioning}><SkipForward /></Button>
+          <Button size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/10 hover:text-white" aria-label={state.isMuted ? "Unmute video" : "Mute video"} aria-pressed={state.isMuted} onClick={handleMute} disabled={transitioning}>{state.isMuted ? <VolumeX /> : <Volume2 />}</Button>
         </div>
         <p role="status" aria-live="polite" className="text-center text-xs text-white/60">{transitioning ? 'Opening post…' : state.lastLoadMs !== undefined ? `Last post ready in ${(state.lastLoadMs / 1000).toFixed(1)}s` : 'Return to something you saved.'}</p>
         {error && <div role="alert" className="space-y-2 rounded-lg bg-white/10 p-3 text-sm"><p>{error}</p><div className="flex gap-2"><Button size="sm" variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white" onClick={handlePlay}>Try Again</Button><Button size="sm" variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white" onClick={handleNext}>Skip Post</Button></div></div>}

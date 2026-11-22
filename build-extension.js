@@ -21,6 +21,7 @@ const filesToCopy = [
   'extension-context.js',
   'play-item.js',
   'player-session.js',
+  'playlist-controls.js',
   'playlist-repository.js'
 ];
 
