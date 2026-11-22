@@ -12,7 +12,8 @@ export async function openPlaylistItem({ library, tabs, session }, args) {
   if (!tab) [tab] = await tabs.query({ url: 'https://www.instagram.com/*', currentWindow: true });
   if (!tab) tab = await tabs.create({ url: 'about:blank', active: false });
   const key = playerKey(tab.id, args.name);
-  const state = { currentIndex, currentShortcode: item.shortcode, isPlaying: true, playbackIntent: 'playing', isMuted: false, isShuffle: false, shuffledOrder: [], isMinimized: false, navigationShortcode: item.shortcode, navigationStartedAt: Date.now() };
+  const previous = (await session.get(key))[key];
+  const state = { currentIndex, currentShortcode: item.shortcode, isPlaying: true, playbackIntent: 'playing', isMuted: false, autoplay: previous?.autoplay !== false, isShuffle: false, shuffledOrder: [], isMinimized: false, navigationShortcode: item.shortcode, navigationStartedAt: Date.now() };
   const previousDocumentId = (await session.get(documentKey(tab.id)))[documentKey(tab.id)] || null;
   await session.set({ [key]: state, [intentKey(tab.id)]: { name: args.name, shortcode: item.shortcode, previousDocumentId, state } });
   await library('activate', { name: args.name });

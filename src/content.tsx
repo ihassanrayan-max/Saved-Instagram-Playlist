@@ -2,7 +2,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { ExtensionOverlay } from './components/ExtensionOverlay';
 import { Collector } from './instagram/collector';
 import { requestPlayer, notifyPlaybackControl, type PlayerRequest } from './instagram/playerRequests';
-import { pausePost, playPost } from './instagram/playback';
+import { pausePost, playPost, setPostAutoplay } from './instagram/playback';
 import { extensionCall, extensionContext, isContextInvalidation, listenExtensionEvent, reportExtensionError } from './utils/extensionContext';
 import './index.css';
 
@@ -68,7 +68,8 @@ async function init() {
           case 'CONTROL_PLAYBACK': {
             const { name, shortcode, state } = message.args as { name: string; shortcode: string; state: Record<string, unknown> };
             notifyPlaybackControl(name, state);
-            if (state.isPlaying) playPost(shortcode, Boolean(state.isMuted)); else pausePost(shortcode);
+            setPostAutoplay(shortcode, state.autoplay !== false);
+            if (state.isPlaying) playPost(shortcode, Boolean(state.isMuted), state.autoplay !== false); else pausePost(shortcode);
             break;
           }
         }

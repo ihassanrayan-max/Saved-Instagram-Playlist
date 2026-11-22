@@ -41,7 +41,7 @@ const tabs = {
   async sendMessage(_id, message) {
     const { state, shortcode } = message.args;
     notifyPlaybackControl(name, state);
-    if (state.isPlaying) playPost(shortcode, Boolean(state.isMuted)); else pausePost(shortcode);
+    if (state.isPlaying) playPost(shortcode, Boolean(state.isMuted), state.autoplay !== false); else pausePost(shortcode);
     return { ok: true };
   },
 };
@@ -62,5 +62,6 @@ document.getElementById('native-sound').onclick = () => { video.muted = !video.m
 document.getElementById('native-play').onclick = () => { void video.play(); };
 document.getElementById('settings-toggle').onclick = () => { void togglePlaylist({ library, session, tabs }, name); };
 document.getElementById('autoplay').onclick = () => { void video.play(); };
+document.getElementById('ended').onclick = () => { if (!video.loop) video.dispatchEvent(new Event('ended')); };
 await video.play();
 createRoot(document.getElementById('player-root')).render(<PlaylistMiniPlayer />);

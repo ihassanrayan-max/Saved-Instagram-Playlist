@@ -14,17 +14,36 @@ let outgoing: { video: HTMLVideoElement; source: string } | null = null;
 let desiredMuted = false;
 let userPaused = false;
 let soundStartup = false;
+let soundVideo: HTMLVideoElement | null = null;
 let nativeGestureUntil = 0;
+let autoplay = true;
+let loopVideo: HTMLVideoElement | null = null;
+let originalLoop = false;
+
+function restoreNativeLoop() {
+  if (loopVideo) loopVideo.loop = originalLoop;
+  loopVideo = null;
+}
+
+function applyQueueMode(video: HTMLVideoElement) {
+  if (loopVideo !== video) {
+    restoreNativeLoop(); loopVideo = video; originalLoop = video.loop;
+  }
+  // Native looping suppresses `ended`. Disable it only while queue autoplay
+  // owns this video; loop in place when the user turns autoplay off.
+  video.loop = !autoplay;
+}
 
 // Instagram can reapply its default mute while attaching/loading a video.
 // Correct that only during extension-started playback, and stop as soon as
 // the user interacts with Instagram's own player.
 function startSound(video: HTMLVideoElement) {
   cancelSoundStartup();
+  soundVideo = video;
   soundStartup = true;
   let started = false;
   const unmute = () => {
-    if (!wantsPlay || currentPostCode() !== managedCode || activeVideo() !== video) return;
+    if (currentPostCode() !== managedCode || activeVideo() !== video) return;
     setNativeMuted(video, desiredMuted);
     emit('sound');
   };
@@ -70,7 +89,7 @@ function scan() {
   const video = activeVideo();
   if (video !== bound || routeChanged) {
     cancelSoundStartup();
-    detach(); bound = video;
+    detach(); restoreNativeLoop(); bound = video;
     if (video) {
       const play = () => {
         if (currentPostCode() !== code) return;
@@ -104,6 +123,8 @@ function scan() {
     // A client-side route can update before Instagram replaces the old video.
     if (outgoing?.video === video && outgoing.source === (video.currentSrc || video.src || '')) return;
     outgoing = null;
+    applyQueueMode(video);
+    if (soundVideo !== video) startSound(video);
     if (userPaused) { if (!video.paused) video.pause(); return; }
     if (wantsPlay && attempted !== video) {
       attempted = video;
@@ -133,21 +154,22 @@ export function subscribePlayback(listener: (notice: PlaybackNotice) => void) {
   document.addEventListener('keydown', nativeGesture, true);
   scan();
   return () => {
-    listeners.delete(listener); observer.disconnect(); window.removeEventListener('popstate', scan); detach(); cancelSoundStartup(); bound = null;
+    listeners.delete(listener); observer.disconnect(); window.removeEventListener('popstate', scan); detach(); restoreNativeLoop(); cancelSoundStartup(); bound = null;
     document.removeEventListener('pointerdown', nativeGesture, true); document.removeEventListener('keydown', nativeGesture, true);
-    managedCode = null; wantsPlay = false; attempted = null; outgoing = null; userPaused = false; desiredMuted = false; nativeGestureUntil = 0;
+    managedCode = null; wantsPlay = false; attempted = null; outgoing = null; userPaused = false; desiredMuted = false; soundVideo = null; nativeGestureUntil = 0; autoplay = true;
   };
 }
 
-export function playPost(shortcode: string, muted = desiredMuted) {
+export function playPost(shortcode: string, muted = desiredMuted, advance = autoplay) {
   if (managedCode !== shortcode) outgoing = null;
-  managedCode = shortcode; wantsPlay = true; userPaused = false; desiredMuted = muted; attempted = null;
+  managedCode = shortcode; wantsPlay = true; userPaused = false; desiredMuted = muted; autoplay = advance; attempted = null;
   scan();
 }
 export function preparePostNavigation(shortcode: string) {
   const video = activeVideo();
   outgoing = video && currentPostCode() !== shortcode ? { video, source: video.currentSrc || video.src || '' } : null;
   cancelSoundStartup();
+  restoreNativeLoop();
   if (outgoing && !video.paused) video.pause();
   managedCode = shortcode; wantsPlay = false; attempted = null;
 }
@@ -159,8 +181,15 @@ export function pausePost(shortcode?: string) {
   if (currentPostCode() === managedCode) activeVideo()?.pause();
 }
 export function setPostMuted(shortcode: string, muted: boolean) {
-  managedCode = shortcode; desiredMuted = muted; cancelSoundStartup();
+  managedCode = shortcode; desiredMuted = muted; cancelSoundStartup(); soundVideo = null;
   if (currentPostCode() === shortcode) {
-    const video = activeVideo(); if (video) { setNativeMuted(video, muted); emit('sound'); }
+    const video = activeVideo(); if (video) startSound(video);
+  }
+}
+
+export function setPostAutoplay(shortcode: string, enabled: boolean) {
+  managedCode = shortcode; autoplay = enabled;
+  if (currentPostCode() === shortcode) {
+    const video = activeVideo(); if (video) applyQueueMode(video);
   }
 }

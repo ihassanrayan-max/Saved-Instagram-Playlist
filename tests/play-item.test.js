@@ -85,9 +85,10 @@ test('reload preserves explicit pause but resets previously muted posts to audib
 
 test('opening a post never inherits a previous post mute', async () => {
   const fixture = await setup();
-  await fixture.session.set({ [playerKey(10, args.name)]: { isMuted: true } });
+  await fixture.session.set({ [playerKey(10, args.name)]: { isMuted: true, autoplay: false } });
   await openPlaylistItem(fixture, args);
   assert.equal(fixture.session.rows[playerKey(10, args.name)].isMuted, false);
+  assert.equal(fixture.session.rows[playerKey(10, args.name)].autoplay, false);
 });
 test('Settings Play toggles pause and resume at the current item without navigating', async () => {
   const fixture = await setup([{ id: 10, url: args.url.replace('/reel/', '/reels/') }]);

@@ -41,14 +41,31 @@ function setup() {
   const unsubscribe = playback.subscribePlayback(notice => notices.push(notice));
   return { notices, unsubscribe, interact: () => { for (const listener of interactions) listener({ isTrusted: true, target: null }); }, mutate: () => { for (const observer of observers) observer.callback(); } };
 }
-test('extension playback unmutes only the active post and preserves Instagram native looping', () => {
+test('extension playback unmutes only the active post and lets autoplay receive ended', () => {
   const { notices, unsubscribe } = setup();
   playback.playPost('different'); assert.equal(videoFixture.video.paused, true);
   playback.playPost('abc'); assert.equal(videoFixture.video.paused, false);
-  assert.equal(videoFixture.video.muted, false); assert.equal(videoFixture.video.volume, 1); assert.equal(videoFixture.video.loop, true);
+  assert.equal(videoFixture.video.muted, false); assert.equal(videoFixture.video.volume, 1); assert.equal(videoFixture.video.loop, false);
   playback.pausePost(); assert.equal(videoFixture.video.paused, true);
   playback.playPost('abc'); assert.equal(videoFixture.video.currentTime, 9); assert.equal(videoFixture.video.muted, false);
   assert.ok(notices.some(n => n.type === 'pause'));
+  unsubscribe();
+  assert.equal(videoFixture.video.loop, true);
+});
+
+test('autoplay off loops natively without navigation or restarting playback', () => {
+  const { unsubscribe, mutate } = setup();
+  const original = videoFixture.video;
+  playback.playPost('abc', false, false);
+  assert.equal(original.loop, true); assert.equal(original.currentTime, 9);
+  playback.setPostAutoplay('abc', true);
+  assert.equal(original.loop, false); assert.equal(original.currentTime, 9);
+  playback.pausePost('abc'); playback.setPostAutoplay('abc', false);
+  assert.equal(original.paused, true); assert.equal(original.loop, true);
+  videoFixture.video = new Video(); mutate();
+  assert.equal(videoFixture.video.loop, true); assert.equal(videoFixture.video.paused, true);
+  playback.playPost('abc', false, false);
+  assert.equal(videoFixture.video.loop, true); assert.equal(videoFixture.video.paused, false);
   unsubscribe();
 });
 test('blocked autoplay produces an actionable error', async () => {
@@ -147,5 +164,18 @@ test('restoring sound preference on a paused post does not resume playback', () 
   videoFixture.video.muted = true;
   playback.setPostMuted('abc', false);
   assert.equal(videoFixture.video.paused, true); assert.equal(videoFixture.video.muted, false);
+  unsubscribe();
+});
+
+test('sound initialization handles a late playlist video without starting playback', () => {
+  const { unsubscribe, mutate } = setup();
+  videoFixture.video = null;
+  playback.setPostMuted('abc', false);
+  videoFixture.video = new Video(); mutate();
+  assert.equal(videoFixture.video.muted, false);
+  assert.equal(videoFixture.video.paused, true);
+  videoFixture.video.muted = true;
+  videoFixture.video.dispatchEvent(new Event('loadedmetadata'));
+  assert.equal(videoFixture.video.muted, false);
   unsubscribe();
 });
