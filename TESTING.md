@@ -1,180 +1,70 @@
-# Testing the Instagram Video Playlist Extension
+# Testing Instagram Video Playlist
 
-## Prerequisites
+Requires Node.js 22+ for the automated test suite, Chrome 116+ for the extension, and an Instagram account for live checks.
 
-- Node.js and npm installed
-- Google Chrome browser
-- Instagram account with saved collections containing videos
+## Build and automated checks
 
-## Build Instructions
-
-### 1. Install Dependencies
-
-```bash
-npm install
-```
-
-### 2. Build the Extension
-
-Run both build commands to create the extension files:
-
-```bash
-# Build the main app
+```sh
+npm ci
+npm test
+npm run lint
 npm run build
-
-# Build the content script
-npx vite build --config vite.config.content.ts
-
-# Copy manifest and icons to dist folder
-node build-extension.js
 ```
 
-Or run all at once:
+The build runs TypeScript checks, builds both popup and content script, copies worker modules, and checks manifest assets. The Node tests use simulated Instagram DOM adapters and video elements; they do not establish compatibility with the live Instagram site.
 
-```bash
-npm run build && npx vite build --config vite.config.content.ts && node build-extension.js
-```
+## Install or update
 
-This will create a `dist/` folder with all necessary extension files:
-- `index.html` - Extension popup
-- `content.js` - Content script injected into Instagram
-- `manifest.json` - Extension configuration
-- `icon*.png` - Extension icons
-- `assets/` - Bundled CSS and JS
+1. Open `chrome://extensions/` and load `dist/` with Load unpacked, or click Reload for the existing extension.
+2. Check that the displayed extension version is **1.2.1**.
+3. Reload the Instagram tab too. Existing tabs retain old content scripts until reloaded.
 
-## Loading the Extension in Chrome
+Legacy local URL lists are intentionally discarded on the first v2 library initialization. Instagram saved collections are never changed.
 
-1. **Open Chrome Extensions Page**
-   - Navigate to `chrome://extensions/`
-   - Or: Menu → More Tools → Extensions
+## Playback checks for 1.2.0
 
-2. **Enable Developer Mode**
-   - Toggle the "Developer mode" switch in the top-right corner
+1. Open Playlist Manager and click any entry's title or URL. It should open that post in an Instagram tab, activate its playlist, and select the correct queue position. Next and Previous should continue from that entry.
+2. Use Next and Previous, including a video that takes several seconds to buffer. Extension-started playback should request sound after the video appears, including if Instagram replaces the video element during loading.
+3. Manually mute the video using Instagram's controls. It should stay muted. Opening a different video through the extension starts a new playback request with sound.
+4. Open a post normally through Instagram while the extension is present. Native playback and mute settings should be left alone unless you press Play in the mini-player.
+5. Let a natively looping video finish. The extension has no loop button and should not reset its currentTime, reload the post, or change the video's loop property.
+6. If Chrome blocks audible autoplay, the mini-player should show an actionable message. Clicking Play or Instagram's video provides a fresh user gesture; the extension does not change browser autoplay policy.
+7. Click the current entry again, and an entry from another playlist. The correct entry must remain selected after navigation, even if the outgoing page tries to save its old playback state.
 
-3. **Load Unpacked Extension**
-   - Click "Load unpacked" button
-   - Select the `dist/` folder from your project directory
-   - The extension should now appear in your extensions list
+## Collection regression checks
 
-4. **Verify Installation**
-   - You should see "Instagram Video Playlist" extension
-   - The extension icon should appear in your Chrome toolbar
-   - Check that there are no errors in the extension card
+1. Navigate into Saved from Instagram without refreshing. Open an individual collection, then Start Collection from the popup.
+2. Stop midway, close and reopen the popup, and Resume. Previously saved posts must not duplicate.
+3. Reload Instagram midway and Resume. Completed batches must remain available.
+4. Change tabs during collection. Background tabs pause traversal instead of falsely declaring completion.
+5. Import into an active playlist. Check its count and a sample from the beginning and end. A 30-row page in the editor is a display page, not a collection limit.
 
-## Testing on Instagram
+## Playback speed investigation
 
-### 1. Navigate to Instagram Saved Collections
+Current cross-post navigation loads an Instagram document for each URL. No fixed 3–5-second wait is inserted before play; readiness events start playback as the video becomes available. The startup sound correction's timers do not delay play.
 
-1. Go to [instagram.com](https://www.instagram.com)
-2. Log in to your account
-3. Click your profile picture
-4. Click "Saved" (bookmark icon)
-5. Open any collection that contains videos
+Next, measure click-to-navigation, content-script initialization, video appearance, and first playing event on cold and warm loads. Compare a native Instagram click with an extension transition. Evaluate native client-side navigation before adding prefetching or caching; signed media URLs and Instagram internals should not become long-term storage dependencies.
 
-### 2. Enable the Extension
+## Phase 2 interaction checks
 
-1. Look for the floating purple "Enable Playlist" button in the bottom-right corner
-2. Click the button to start video detection
-3. The extension will automatically scroll through the collection to find all videos
-4. A progress indicator will show how many videos have been detected
+1. Add a personal title, notes, and comma-separated tags to a post. Close and reopen the popup; confirm all metadata remains. Export/import must retain it too.
+2. Select another playlist and search for a word from the first playlist's notes. Search results must include its playlist name; clicking a result opens the correct playlist and queue position.
+3. Move a post up/down using the buttons. The browser announces the change and keeps keyboard focus on the moved post's notes button, including at list boundaries.
+4. Open Queue in the floating player. Search, jump to another post, and page through a long queue. Shuffle must be reflected in queue order.
+5. Use Tab to reach every control. Use the move handle's arrows to position the player; Shift moves farther. Alt+Shift+Left/Right changes posts unless editing text. Resize the window and confirm the player stays reachable.
+6. Enable reduced motion in the OS. Animated gradients, decorative motion, and transitions should be suppressed.
+7. End Session from either popup or player. Managed playback should pause and the player should disappear.
+8. Test a post with a real link currently present in Instagram's page, then a saved URL without a corresponding link. The former can use native navigation; the latter must still load through a document fallback. Changing pages manually during a pending navigation must cancel the request.
+9. Watch the player's last-post readiness time over several transitions. It measures local click-to-playing when available, not a network benchmark. No analytics or browsing data are sent off-device.
 
-### 3. Test Playlist Features
+The responsive library preview was exercised with disposable sample posts, including note persistence, cross-playlist search, reorder focus, and horizontal overflow checks. Live authenticated Instagram navigation and browser autoplay restrictions still require a real-account check after reloading the extension and Instagram tab.
 
-Once videos are collected:
+## Extension-update regression checks (1.2.1)
 
-- **Play/Pause**: Click the center play button
-- **Next/Previous**: Use arrow buttons to navigate
-- **Shuffle**: Click shuffle icon to randomize playback order
-- **Loop**: Click repeat icon to enable continuous playback
-- **Close**: Click X to hide the player
+1. Reload the extension once and refresh Instagram to install the new content script. Historical errors from previous builds remain in Chrome's Errors view until cleared; they are not evidence that the updated script is generating new errors.
+2. With the new player open, reload the extension again without refreshing Instagram. Return to the Instagram tab. The old player must retire and show a single reload prompt, without repeated `Extension context invalidated` messages.
+3. Start collection and repeat the extension reload. The collector must cancel without attempting a final write through the invalidated runtime. Previously checkpointed batches remain available after refreshing Instagram.
+4. After invalidation, a pending native-navigation fallback must not redirect the page. Dismiss the prompt or use Reload Instagram to reconnect.
+5. For a local runtime simulation, run the development server and open `/tests/fixtures/context-reload.html` after building. Simulate extension reload, then Check retired script. The fixture should show zero API calls after invalidation and the actual content script's reload prompt.
 
-## Troubleshooting
-
-### Extension Not Loading
-
-- **Check Console Errors**: Right-click extension → "Inspect popup"
-- **Verify Build**: Ensure all files exist in `dist/` folder
-- **Rebuild**: Try cleaning `dist/` and rebuilding
-
-### "Enable Playlist" Button Not Appearing
-
-- **Check URL**: Must be on `instagram.com/*/saved/`
-- **Check Console**: Open DevTools → Console tab for errors
-- **Verify Content Script**: Check if `content.js` loaded in DevTools → Sources → Content Scripts
-
-### Videos Not Detected
-
-- **Wait for Page Load**: Instagram loads content dynamically
-- **Scroll Manually**: Try scrolling down to load more videos first
-- **Check Video Format**: Extension detects `<video>` elements only
-
-### Player Not Working
-
-- **Check Video URLs**: Some Instagram videos may have CORS restrictions
-- **Inspect Element**: Use DevTools to verify video elements exist
-- **Check Browser Console**: Look for playback errors
-
-## Development Mode
-
-For faster development iteration:
-
-```bash
-# Terminal 1: Watch mode for main app
-npm run dev
-
-# Terminal 2: Watch mode for content script
-npx vite build --config vite.config.content.ts --watch
-
-# After changes, reload extension:
-# - Go to chrome://extensions/
-# - Click reload icon on extension card
-# - Refresh Instagram page
-```
-
-## Debugging Tips
-
-### View Content Script Logs
-
-1. Open Instagram page with extension
-2. Open DevTools (F12)
-3. Go to Console tab
-4. Content script logs will appear here
-
-### View Extension Popup Logs
-
-1. Click extension icon in toolbar
-2. Right-click popup → "Inspect"
-3. DevTools will open for the popup
-
-### Check Injected Elements
-
-1. Open DevTools on Instagram
-2. Go to Elements tab
-3. Look for `<div id="instagram-playlist-extension">` in the body
-4. Verify the overlay component is rendered
-
-## Known Limitations
-
-- Only works on Instagram saved collections pages
-- May not detect videos if Instagram changes their DOM structure
-- Some videos may have playback restrictions
-- Extension needs to be manually reloaded after code changes
-
-## Next Steps
-
-After successful testing, you can:
-
-1. **Publish to Chrome Web Store**
-   - Package the `dist/` folder as a zip
-   - Submit to Chrome Web Store Developer Dashboard
-
-2. **Add More Features**
-   - Video download capability
-   - Playlist export/import
-   - Keyboard shortcuts
-   - Settings panel
-
-3. **Improve Detection**
-   - Handle more Instagram page types
-   - Better error handling
-   - Performance optimizations
+Automated tests also verify synchronous throws, rejected and in-flight promises, cleanup idempotency, preserving real quota errors, and preventing fallback writes to Instagram's local storage.
