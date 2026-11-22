@@ -14,7 +14,6 @@ const filesToCopy = [
   'icon16.png',
   'icon48.png',
   'icon128.png',
-  'robots.txt',
   'background.js',
   'playlist-model.js',
   'library-view.js',

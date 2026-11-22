@@ -14,6 +14,9 @@ dist-ssr
 *.local
 
 # Editor directories and files
+.cursor/
+.codex/
+.agents/
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -35,3 +38,4 @@ dist-ssr
 # OS files
 Thumbs.db
 tests/fixtures/*.generated.js
+releases/
