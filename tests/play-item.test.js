@@ -83,7 +83,7 @@ test('an explicit pause is restored on reload and playing sessions restore sound
   assert.equal(restorePlayback({ currentShortcode: 'second', playbackIntent: 'playing', isPlaying: true }, 'other', true).managed, false);
 });
 test('Settings Play toggles pause and resume at the current item without navigating', async () => {
-  const fixture = await setup([{ id: 10, url: args.url }]);
+  const fixture = await setup([{ id: 10, url: args.url.replace('/reel/', '/reels/') }]);
   await fixture.library('activate', { name: args.name });
   await fixture.session.set({ [playerKey(10, args.name)]: { currentIndex: 1, currentShortcode: 'second', isPlaying: true, playbackIntent: 'playing', isMuted: false } });
   const controls = [];

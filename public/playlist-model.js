@@ -2,11 +2,12 @@
 export function normalizeItem(value) {
   if (!value || typeof value.url !== 'string') throw new Error('Expected an Instagram post URL.');
   const url = new URL(value.url);
-  const match = url.pathname.match(/^\/(?:[\w.]+\/)?(p|reel)\/([\w-]+)\/?$/);
+  const match = url.pathname.match(/^\/(?:[\w.]+\/)?(p|reels?)\/([\w-]+)\/?$/);
   if (url.protocol !== 'https:' || !['instagram.com', 'www.instagram.com'].includes(url.hostname) || !match) {
     throw new Error('Please enter a valid HTTPS Instagram post or reel URL.');
   }
-  const item = { url: `https://www.instagram.com/${match[1]}/${match[2]}/`, shortcode: match[2] };
+  const kind = match[1] === 'p' ? 'p' : 'reel';
+  const item = { url: `https://www.instagram.com/${kind}/${match[2]}/`, shortcode: match[2] };
   for (const key of ['thumbnail', 'username', 'caption', 'title', 'notes']) {
     if (typeof value[key] === 'string') item[key] = value[key];
   }

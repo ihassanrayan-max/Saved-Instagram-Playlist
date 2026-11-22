@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Play, Pause, SkipForward, SkipBack, Shuffle, X, Minimize2, Settings, GripVertical, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getPlaylist, subscribeLibrary, type PlaylistItem } from '@/utils/playlistStorage';
-import { currentPostCode } from '@/instagram/adapter';
+import { activeVideo, currentPostCode } from '@/instagram/adapter';
 import { playPost, pausePost, setPostMuted, preparePostNavigation, subscribePlayback } from '@/instagram/playback';
 import { normalizeItem } from '../../public/playlist-model.js';
 import { restorePlayback } from '../../public/player-session.js';
@@ -61,7 +61,10 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
           startedAt.current = managedPlayback.current ? saved.navigationStartedAt || null : null;
         }
         setState(prev => {
-          const next = name === latest.current.playlistName ? prev : { ...initialState(), ...restored, isPlaying: restore.playing, isMuted: restore.muted };
+          const video = activeVideo();
+          const next = name === latest.current.playlistName ? prev : { ...initialState(), ...restored,
+            isPlaying: restore.managed ? restore.playing : Boolean(video && !video.paused && !video.ended),
+            isMuted: restore.managed ? restore.muted : Boolean(video?.muted || video?.volume === 0) };
           const order = next.shuffledOrder || [];
           return { ...next, currentIndex: index >= 0 ? index : Math.min(next.currentIndex, Math.max(0, items.length - 1)),
             shuffledOrder: order.length === items.length && new Set(order).size === items.length && order.every(i => i >= 0 && i < items.length) ? order : [] };

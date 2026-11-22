@@ -13,7 +13,7 @@ const browser: NavigationEnvironment = {
   currentCode() { try { return normalizeItem({ url: location.href }).shortcode; } catch { return null; } },
   findLink(shortcode) {
     const scope = document.querySelector('main') || document;
-    return [...scope.querySelectorAll<HTMLAnchorElement>('a[href*="/p/"], a[href*="/reel/"]')].find(link => {
+    return [...scope.querySelectorAll<HTMLAnchorElement>('a[href*="/p/"], a[href*="/reel/"], a[href*="/reels/"]')].find(link => {
       if (!link.isConnected || link.target === '_blank' || link.hasAttribute('download')) return false;
       try { return normalizeItem({ url: link.href }).shortcode === shortcode; } catch { return false; }
     }) || null;

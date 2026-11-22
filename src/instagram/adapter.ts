@@ -7,7 +7,7 @@ export const isSavedPage = () => /\/saved(?:\/|$)/.test(location.pathname);
 export function visiblePosts(): PlaylistItem[] {
   const root = document.querySelector('main') || document;
   const items: PlaylistItem[] = [];
-  root.querySelectorAll<HTMLAnchorElement>('a[href*="/p/"], a[href*="/reel/"]').forEach(link => {
+  root.querySelectorAll<HTMLAnchorElement>('a[href*="/p/"], a[href*="/reel/"], a[href*="/reels/"]').forEach(link => {
     try {
       const image = link.querySelector('img');
       items.push(normalizeItem({ url: link.href, thumbnail: image?.currentSrc || image?.src, caption: image?.alt }));
@@ -17,7 +17,7 @@ export function visiblePosts(): PlaylistItem[] {
 }
 
 export function scrollContainer(): HTMLElement {
-  const link = document.querySelector('main a[href*="/p/"], main a[href*="/reel/"]');
+  const link = document.querySelector('main a[href*="/p/"], main a[href*="/reel/"], main a[href*="/reels/"]');
   let node = link?.parentElement;
   while (node && node !== document.body) {
     if (/(auto|scroll)/.test(getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight + 50) return node;

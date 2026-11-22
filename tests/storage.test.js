@@ -6,6 +6,16 @@ import { normalizeItems, normalizeItem } from '../public/playlist-model.js';
 import { memoryStorage } from './helpers.js';
 const post = code => ({ url: `https://www.instagram.com/reel/${code}/`, shortcode: code });
 
+test('Instagram plural reels routes resolve to the same saved post', () => {
+  for (const url of ['https://www.instagram.com/reels/abc/', 'https://www.instagram.com/creator/reels/abc/?source=copy']) {
+    assert.deepEqual(normalizeItem({ url }), post('abc'));
+  }
+  assert.equal(normalizeItems([post('abc'), { url: 'https://www.instagram.com/reels/abc/' }]).length, 1);
+  for (const path of ['reels/', 'reels/audio/123/', 'creator/reels/']) {
+    assert.throws(() => normalizeItem({ url: `https://www.instagram.com/${path}` }));
+  }
+});
+
 test('normalization deduplicates post/reel aliases while preserving first-seen order and route', () => {
   assert.deepEqual(normalizeItems([post('abc'), { url: 'https://instagram.com/p/abc/?utm_source=copy' }, post('def')]), [post('abc'), post('def')]);
 });
