@@ -17,7 +17,7 @@ export async function togglePlaylist(dependencies, name) {
   const onPost = tab?.url?.includes(`/${item.shortcode}/`);
   if (onPost && await library('active') === name && state) {
     const playing = !state.isPlaying;
-    const next = { ...state, currentShortcode: item.shortcode, isPlaying: playing, playbackIntent: playing ? 'playing' : 'paused' };
+    const next = { ...state, currentShortcode: item.shortcode, isPlaying: playing, playbackIntent: playing ? 'playing' : 'paused', isMuted: playing ? false : Boolean(state.isMuted) };
     await session.set({ [playerKey(tab.id, name)]: next });
     try {
       const response = await tabs.sendMessage(tab.id, { type: 'CONTROL_PLAYBACK', args: { name, shortcode: item.shortcode, state: next } });

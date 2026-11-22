@@ -77,10 +77,17 @@ test('a content player that cannot navigate delegates the reload safely', async 
   await openPlaylistItem(fixture, args);
   assert.deepEqual(fixture.updates, [{ id: 10, url: args.url, active: true }]);
 });
-test('an explicit pause is restored on reload and playing sessions restore sound preference', () => {
-  assert.deepEqual(restorePlayback({ currentShortcode: 'second', playbackIntent: 'paused', isPlaying: false, isMuted: true }, 'second', true), { managed: true, playing: false, muted: true });
-  assert.deepEqual(restorePlayback({ currentShortcode: 'second', playbackIntent: 'playing', isPlaying: true, isMuted: false }, 'second', true), { managed: true, playing: true, muted: false });
+test('reload preserves explicit pause but resets previously muted posts to audible', () => {
+  assert.deepEqual(restorePlayback({ currentShortcode: 'second', playbackIntent: 'paused', isPlaying: false, isMuted: true }, 'second', true), { managed: true, playing: false, muted: false });
+  assert.deepEqual(restorePlayback({ currentShortcode: 'second', playbackIntent: 'playing', isPlaying: true, isMuted: true }, 'second', true), { managed: true, playing: true, muted: false });
   assert.equal(restorePlayback({ currentShortcode: 'second', playbackIntent: 'playing', isPlaying: true }, 'other', true).managed, false);
+});
+
+test('opening a post never inherits a previous post mute', async () => {
+  const fixture = await setup();
+  await fixture.session.set({ [playerKey(10, args.name)]: { isMuted: true } });
+  await openPlaylistItem(fixture, args);
+  assert.equal(fixture.session.rows[playerKey(10, args.name)].isMuted, false);
 });
 test('Settings Play toggles pause and resume at the current item without navigating', async () => {
   const fixture = await setup([{ id: 10, url: args.url.replace('/reel/', '/reels/') }]);
@@ -88,11 +95,13 @@ test('Settings Play toggles pause and resume at the current item without navigat
   await fixture.session.set({ [playerKey(10, args.name)]: { currentIndex: 1, currentShortcode: 'second', isPlaying: true, playbackIntent: 'playing', isMuted: false } });
   const controls = [];
   fixture.tabs.sendMessage = async (_id, message) => { controls.push(message); return { ok: true }; };
+  await fixture.session.set({ [playerKey(10, args.name)]: { ...fixture.session.rows[playerKey(10, args.name)], isMuted: true } });
   await togglePlaylist(fixture, args.name);
   assert.equal(controls[0].args.state.playbackIntent, 'paused');
   assert.equal(fixture.session.rows[playerKey(10, args.name)].isPlaying, false);
   await togglePlaylist(fixture, args.name);
   assert.equal(controls[1].args.state.playbackIntent, 'playing');
+  assert.equal(controls[1].args.state.isMuted, false);
   assert.equal(fixture.updates.length, 0);
   assert.equal(fixture.session.rows[playerKey(10, args.name)].currentIndex, 1);
 });

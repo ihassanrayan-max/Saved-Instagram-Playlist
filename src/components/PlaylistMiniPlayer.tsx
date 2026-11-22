@@ -91,7 +91,7 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
     navigating.current = true;
     setTransitioning(true);
     const target = normalizeItem({ url }).shortcode;
-    next = { ...next, currentShortcode: target, playbackIntent: 'playing' };
+    next = { ...next, currentShortcode: target, playbackIntent: 'playing', isMuted: false };
     pendingTarget.current = target;
     managedPlayback.current = true;
     startedAt.current = Date.now();
@@ -124,7 +124,7 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
     const target = normalizeItem({ url: request.url }).shortcode;
     const index = items.findIndex(item => item.shortcode === target);
     if (index < 0) throw new Error('Post no longer exists in this playlist.');
-    const next: PlaylistState = { ...initialState(), currentIndex: index, currentShortcode: target, isPlaying: true, playbackIntent: 'playing', isMuted: Boolean(request.state?.isMuted) };
+    const next: PlaylistState = { ...initialState(), currentIndex: index, currentShortcode: target, isPlaying: true, playbackIntent: 'playing' };
     latest.current = { state: next, playlist: items, playlistName: request.name };
     setPlaylist(items); setPlaylistName(request.name); setLoaded(true);
     return navigateToUrl(request.url, next, true);
@@ -202,7 +202,7 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
     if (!item) return;
     managedPlayback.current = true;
     setError('');
-    if (currentPostCode() === item.shortcode) { setState(prev => ({ ...prev, isPlaying: true, playbackIntent: 'playing', currentShortcode: item.shortcode })); playPost(item.shortcode, current.isMuted); }
+    if (currentPostCode() === item.shortcode) { setState(prev => ({ ...prev, isPlaying: true, playbackIntent: 'playing', currentShortcode: item.shortcode, isMuted: false })); playPost(item.shortcode, false); }
     else navigateToUrl(item.url, { ...current, isPlaying: true }).catch(() => {});
   };
   const handlePause = () => { const shortcode = latest.current.playlist[latest.current.state.currentIndex]?.shortcode; managedPlayback.current = true; pausePost(shortcode); setState(prev => ({ ...prev, isPlaying: false, playbackIntent: 'paused', currentShortcode: shortcode })); };

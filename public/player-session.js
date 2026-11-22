@@ -9,7 +9,9 @@ export function restorePlayback(state, shortcode, reload = false) {
   const samePost = Boolean(shortcode && state?.currentShortcode === shortcode);
   const paused = samePost && state?.playbackIntent === 'paused';
   const resume = samePost && reload && state?.playbackIntent === 'playing';
-  return { managed: navigation || paused || resume, playing: !paused && (navigation || resume), muted: Boolean(state?.isMuted) };
+  // A new document always starts with sound enabled. An explicit pause still
+  // survives reload; a mute applies only to the current document/post.
+  return { managed: navigation || paused || resume, playing: !paused && (navigation || resume), muted: false };
 }
 
 export async function readPlayer(session, sender, name) {
