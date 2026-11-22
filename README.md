@@ -10,8 +10,8 @@ A Chrome extension that transforms your Instagram saved collections into interac
 - **Playlist Navigation**: Prefer native Instagram links when available, with a document fallback
 - **Library Search**: Find posts across playlists by title, notes, tags, creator, or caption
 - **Personal Notes**: Add a memorable title, notes, and tags; keep them in exports
-- **Queue & Accessibility**: Searchable queue, keyboard reordering, reduced motion, and an end-session action
-- **Auto-Play & Auto-Unmute**: Videos automatically play with sound
+- **Queue & Accessibility**: Searchable queue, direct queue-position editing, reduced motion, and an end-session action
+- **Playback Preferences**: Play/pause and sound controls remember your intent across reloads
 - **Shuffle**: Shuffle playlist order; Instagram retains its native video looping
 - **Export/Import**: Backup and share playlists as JSON files
 - **Modern UI**: Beautiful glassmorphic design with Instagram-inspired gradients

@@ -1,0 +1,14 @@
+---
+description: Preserve verified work with logical commit checkpoints and push only after verification
+alwaysApply: true
+---
+
+# Commit checkpoints
+
+- After roughly two related functional edits, run their relevant checks and commit the working chunk before starting the next pair. Interpret an edit as a functional change, not each individual file write.
+- Use specific commit messages and the user's configured author identity. Preserve real commit dates; do not create empty commits or alter dates to manufacture contribution activity.
+- Preserve the existing repository history. Do not force-push or replace remote history to simplify a downloaded checkout.
+- Keep generated extension builds, generated fixture bundles, credentials, and local data out of commits.
+- Before pushing, complete the relevant automated tests, lint, TypeScript/build checks, browser regression checks, and a diff review. Distinguish simulated media checks from actual authenticated Instagram/audio testing.
+- Honor the user's instruction to defer a push when a required real-account check remains outstanding. Local commits do not appear on GitHub until pushed.
+- Use `GITHUB_SETUP.md` for this project's remote and verification commands.

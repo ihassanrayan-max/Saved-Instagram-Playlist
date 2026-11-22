@@ -1,50 +1,23 @@
-# GitHub Repository Setup Instructions
+# Git workflow
 
-Your code is ready and committed locally! Follow these steps to upload to GitHub:
+This downloaded project is now connected to its original history at:
+https://github.com/ihassanrayan-max/insta-saved-playlist
 
-## Step 1: Create GitHub Repository
+## Checkpoints
 
-1. Go to https://github.com/new
-2. Repository name: `instagram-playlist-extension` (or your preferred name)
-3. Description: "Chrome extension to turn Instagram saved collections into playlists"
-4. Choose Public or Private
-5. **DO NOT** initialize with README, .gitignore, or license (we already have these)
-6. Click "Create repository"
+Group roughly two related functional edits into a logical commit once their relevant tests pass. Keep the working tree reviewable. Use specific messages describing the behavior changed; avoid empty commits or artificial timestamp changes. Larger independent changes can have separate commits when that makes review easier.
 
-## Step 2: Connect and Push
+Before pushing, run the automated suite, lint, TypeScript/build checks, and the relevant browser regression checks. Inspect `git diff --check` and `git status` so generated builds, secrets, and fixture bundles are not included.
 
-After creating the repository, GitHub will show you commands. Use these:
-
-```bash
-# Add the remote (replace YOUR_USERNAME with your GitHub username)
-git remote add origin https://github.com/YOUR_USERNAME/instagram-playlist-extension.git
-
-# Push to GitHub
-git push -u origin main
+```sh
+npm test
+npm run lint
+npm run build
+git diff --check
+git log --oneline origin/main..HEAD
+git push origin main
 ```
 
-## Step 3: Update Git User Info (Optional)
+GitHub CLI authentication was expired when this checkout was connected. If pushing fails, sign in with `gh auth login --hostname github.com` and then run `gh auth setup-git`. Do not overwrite remote history or use a force push to work around authentication failures.
 
-If you want to update the commit author information:
-
-```bash
-git config user.name "Your Name"
-git config user.email "your.email@example.com"
-```
-
-Then amend the commit:
-```bash
-git commit --amend --reset-author --no-edit
-git push -f origin main
-```
-
-## Step 4: Add Repository Topics (Optional)
-
-On your GitHub repository page:
-1. Click the gear icon (⚙️) next to "About"
-2. Add topics: `chrome-extension`, `instagram`, `playlist`, `react`, `typescript`, `vite`
-
-## Done! 🎉
-
-Your repository is now live on GitHub!
-
+Commits appear in the contribution graph according to GitHub's rules, including the branch, repository, and author email associated with the account. Keep actual commit dates and confirm the configured author email is linked to the intended GitHub account. Do not promise that a particular commit count produces additional contribution days.

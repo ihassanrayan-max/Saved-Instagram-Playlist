@@ -181,7 +181,7 @@ export const PlaylistMiniPlayer = ({ onClose }: PlaylistMiniPlayerProps) => {
   const code = playlist[state.currentIndex]?.shortcode;
   useEffect(() => {
     if (!loaded || !code || !managedPlayback.current || currentPostCode() !== code) return;
-    if (state.playbackIntent === 'paused') { pausePost(code); return; }
+    if (state.playbackIntent === 'paused') { pausePost(code); setPostMuted(code, state.isMuted); return; }
     if (!state.isPlaying) return;
     playPost(code, state.isMuted);
     const timeout = setTimeout(() => {

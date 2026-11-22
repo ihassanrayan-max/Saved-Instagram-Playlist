@@ -141,3 +141,11 @@ test('mute toggles the actual video and survives replacement and resumed playbac
   assert.equal(notices.at(-1).muted, false);
   unsubscribe();
 });
+test('restoring sound preference on a paused post does not resume playback', () => {
+  const { unsubscribe } = setup();
+  playback.playPost('abc'); playback.pausePost('abc');
+  videoFixture.video.muted = true;
+  playback.setPostMuted('abc', false);
+  assert.equal(videoFixture.video.paused, true); assert.equal(videoFixture.video.muted, false);
+  unsubscribe();
+});

@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — Instagram Video Playlist
 
-Last updated: 2026-11-21. Draft release tracking only; nothing has been submitted or published.
+Last updated: 2026-11-22. Draft release tracking only; nothing has been submitted or published.
 
 ## Store listing
 
@@ -60,6 +60,7 @@ Publisher name, public contact address, support URL, and homepage require the us
 
 ## Version history
 
+- **1.3.0 — 2026-11-22 — Local build:** Explain queue search matches, compact and collapsible post browsing, direct position editing, removal inside Edit, persistent pause and sound preferences, and Settings play/pause toggling.
 - **1.2.1 — 2026-11-21 — Local build:** Retire invalidated content scripts, cancel outstanding work, prevent stale storage fallback, and offer a reload prompt. Correct icon formats and dimensions and validate them during packaging.
 - **1.2.0 — 2026-11-21 — Local build:** Library search, personal metadata, queue controls, native-link navigation with fallback, and accessibility improvements.
 

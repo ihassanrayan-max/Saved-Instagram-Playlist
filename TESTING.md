@@ -16,7 +16,7 @@ The build runs TypeScript checks, builds both popup and content script, copies w
 ## Install or update
 
 1. Open `chrome://extensions/` and load `dist/` with Load unpacked, or click Reload for the existing extension.
-2. Check that the displayed extension version is **1.2.1**.
+2. Check that the displayed extension version is **1.3.0**.
 3. Reload the Instagram tab too. Existing tabs retain old content scripts until reloaded.
 
 Legacy local URL lists are intentionally discarded on the first v2 library initialization. Instagram saved collections are never changed.
@@ -49,7 +49,7 @@ Next, measure click-to-navigation, content-script initialization, video appearan
 
 1. Add a personal title, notes, and comma-separated tags to a post. Close and reopen the popup; confirm all metadata remains. Export/import must retain it too.
 2. Select another playlist and search for a word from the first playlist's notes. Search results must include its playlist name; clicking a result opens the correct playlist and queue position.
-3. Move a post up/down using the buttons. The browser announces the change and keeps keyboard focus on the moved post's notes button, including at list boundaries.
+3. Open Edit and enter a new position, such as 1 to 100, then Save Changes. The post should move once and retain its metadata. An invalid position must not save a partial edit.
 4. Open Queue in the floating player. Search, jump to another post, and page through a long queue. Shuffle must be reflected in queue order.
 5. Use Tab to reach every control. Use the move handle's arrows to position the player; Shift moves farther. Alt+Shift+Left/Right changes posts unless editing text. Resize the window and confirm the player stays reachable.
 6. Enable reduced motion in the OS. Animated gradients, decorative motion, and transitions should be suppressed.
@@ -68,3 +68,16 @@ The responsive library preview was exercised with disposable sample posts, inclu
 5. For a local runtime simulation, run the development server and open `/tests/fixtures/context-reload.html` after building. Simulate extension reload, then Check retired script. The fixture should show zero API calls after invalidation and the actual content script's reload prompt.
 
 Automated tests also verify synchronous throws, rejected and in-flight promises, cleanup idempotency, preserving real quota errors, and preventing fallback writes to Instagram's local storage.
+
+## Queue and media controls (1.3.0)
+
+- Search the queue for a tag, creator, title, caption, or note. Confirm the result shows a readable title and labels the matching metadata. Example: “You Never Give Up” with “Tag: Demon Slayer”. Posts without a title should use their available caption before falling back to a shortcode.
+- In the library, confirm each compact row has only an Edit action. Edit contains notes, tags, a direct position field, and Remove from Playlist with a separate confirmation. Cancellation must preserve the post.
+- Collapse Posts, reopen it, scroll inside the bounded region, and toggle Expand List. Pagination remains available for long libraries.
+- Click Pause Playlist in Settings while a reel is playing. It must pause the current post rather than restarting the first post. Refresh Instagram: it should remain paused. Play Playlist resumes that queue position.
+- Toggle the mini-player's mute control twice. Verify actual audio and the control's label agree. Refresh while playing and while paused; both playback intent and sound preference should be restored. Instagram's recognizable sound button is used when available to help keep its own UI synchronized.
+- Native autoplay attempts after an explicit pause must not silently resume the video. A deliberate native play action or our Play button may resume it.
+
+Run `npm run test:player-fixture`, then open `/tests/fixtures/player-controls.html` in the development server for a disposable browser simulation. The fixture uses the real React player and playback logic with a mock extension runtime and media adapter; it does not establish live Instagram compatibility or produce real audio. Pause from its Settings control, simulate native autoplay, refresh, then test mute/unmute and queue search. Generated fixture bundles are excluded from Git and the extension package.
+
+Live Instagram and real audible media still need a user-account smoke test; no universal reduction in Instagram reload time is claimed.
