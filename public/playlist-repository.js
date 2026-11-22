@@ -55,13 +55,21 @@ export function createRepository(storage) {
         [ACTIVE_KEY]: active === name ? next : active,
       });
       await storage.remove(itemKey(name));
-    } else if (operation === 'annotate' || operation === 'move') {
+    } else if (operation === 'annotate' || operation === 'move' || operation === 'position') {
       const items = await read(name);
       const index = items.findIndex(item => item.shortcode === args.shortcode);
       if (index < 0) throw new Error('This post is no longer in the playlist.');
       if (operation === 'annotate') {
         const patch = args.metadata || {};
         items[index] = normalizeItems([{ ...items[index], title: patch.title, notes: patch.notes, tags: patch.tags }])[0];
+        if (args.position !== undefined) {
+          if (!Number.isInteger(args.position) || args.position < 1 || args.position > items.length) throw new Error(`Position must be between 1 and ${items.length}.`);
+          const [item] = items.splice(index, 1); items.splice(args.position - 1, 0, item);
+        }
+      } else if (operation === 'position') {
+        if (!Number.isInteger(args.position) || args.position < 1 || args.position > items.length) throw new Error(`Position must be between 1 and ${items.length}.`);
+        const [item] = items.splice(index, 1);
+        items.splice(args.position - 1, 0, item);
       } else {
         if (args.direction !== -1 && args.direction !== 1) throw new Error('Invalid move direction.');
         const next = index + args.direction;

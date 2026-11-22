@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Plus, Search, ArrowUp, ArrowDown, Pencil, Trash2, Download, Upload, ListMusic, X } from 'lucide-react';
+import { Play, Plus, Search, Pencil, Trash2, Download, Upload, ListMusic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { normalizeItem, validatePlaylists } from '../../public/playlist-model.js';
-import { searchLibrary } from '../../public/library-view.js';
-import { getAllPlaylists, getActivePlaylistName, setActivePlaylistName, subscribeLibrary, createPlaylist, renamePlaylist, deletePlaylist, addUrlsToPlaylist, removeUrlsFromPlaylist, movePlaylistItem, annotatePlaylistItem, saveAllPlaylists, type PlaylistItem, type PlaylistsData } from '@/utils/playlistStorage';
+import { searchLibrary, postTitle } from '../../public/library-view.js';
+import { getAllPlaylists, getActivePlaylistName, setActivePlaylistName, subscribeLibrary, createPlaylist, renamePlaylist, deletePlaylist, addUrlsToPlaylist, removeUrlsFromPlaylist, annotatePlaylistItem, saveAllPlaylists, type PlaylistItem, type PlaylistsData } from '@/utils/playlistStorage';
 import { cn } from '@/lib/utils';
 import { sendExtensionMessage, isExtensionEnvironment } from '@/utils/extensionContext';
 
-type NotesEditor = { name: string; item: PlaylistItem; title: string; notes: string; tags: string };
+type NotesEditor = { name: string; item: PlaylistItem; title: string; notes: string; tags: string; position: string };
 type ImportPreview = { playlists: PlaylistsData; active: string | null };
 
 export const PlaylistManager = () => {
@@ -29,11 +29,13 @@ export const PlaylistManager = () => {
   const [nameValue, setNameValue] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editor, setEditor] = useState<NotesEditor | null>(null);
+  const [deletePost, setDeletePost] = useState<{ name: string; item: PlaylistItem } | null>(null);
+  const [expandedPosts, setExpandedPosts] = useState(false);
+  const postDisclosure = useRef<HTMLDetailsElement>(null);
   const [importing, setImporting] = useState<ImportPreview | null>(null);
   const [manualUrl, setManualUrl] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const movedPost = useRef<string | null>(null);
   const generation = useRef(0);
   const results = useMemo(() => searchLibrary(playlists, selected, query), [playlists, selected, query]);
   const pages = Math.max(1, Math.ceil(results.length / 30));
@@ -57,12 +59,11 @@ export const PlaylistManager = () => {
     refresh(); const unsubscribe = subscribeLibrary(refresh);
     return () => { requestGeneration.current++; unsubscribe(); };
   }, [load]);
-  useEffect(() => setPage(0), [query, selected]);
   useEffect(() => {
-    if (!movedPost.current || busy) return;
-    document.getElementById(movedPost.current)?.focus({ preventScroll: true });
-    movedPost.current = null;
-  }, [playlists, busy]);
+    setPage(0);
+    if (query.trim() && postDisclosure.current) postDisclosure.current.open = true;
+  }, [query, selected]);
+
 
   const run = async (action: () => Promise<void>, message?: string) => {
     if (busy) return;
@@ -148,32 +149,31 @@ export const PlaylistManager = () => {
           <div className="flex-1 space-y-1"><label htmlFor="manual-url" className="text-xs font-medium">Add a post by URL</label><Input id="manual-url" type="url" value={manualUrl} onChange={e => setManualUrl(e.target.value)} placeholder="https://www.instagram.com/reel/…" required /></div>
           <Button variant="outline" disabled={busy || !manualUrl.trim()}>Add Post</Button>
         </form>}
-        <div className="overflow-hidden rounded-xl border border-border" aria-busy={busy || loading}>
-          {rows.map(({ name, item, index, total: count }) => <article key={`${name}:${item.shortcode}`} className="group flex gap-3 border-b border-border p-3 last:border-b-0 sm:p-4">
-            <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary text-muted-foreground" aria-hidden="true">
+        <details ref={postDisclosure} open className="rounded-xl border border-border">
+          <summary className="cursor-pointer rounded-xl px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Posts · {results.length.toLocaleString()} {query.trim() ? 'matches' : 'items'}</summary>
+          <div className="flex items-center justify-between border-t px-4 py-2"><span className="text-xs text-muted-foreground">{expandedPosts ? 'Expanded list' : 'Scroll within the list'}</span><Button size="sm" variant="ghost" aria-pressed={expandedPosts} onClick={() => setExpandedPosts(!expandedPosts)}>{expandedPosts ? 'Use Compact View' : 'Expand List'}</Button></div>
+          <div role="region" aria-label="Playlist posts" tabIndex={0} className={cn('rounded-b-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', !expandedPosts && 'max-h-[390px] overflow-y-auto overscroll-contain')} aria-busy={busy || loading}>
+          {rows.map(({ name, item, index, total: count, title, matches }) => <article key={`${name}:${item.shortcode}`} className="group flex items-start gap-3 border-b border-border px-3 py-2.5 last:border-b-0">
+            <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary text-muted-foreground" aria-hidden="true">
               {item.thumbnail ? <img src={item.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover" onError={event => { event.currentTarget.style.display = 'none'; }} /> : <Play size={18} />}
             </div>
             <div className="min-w-0 flex-1 space-y-1">
-              <a href={item.url} target="_blank" rel="noopener noreferrer" className="block rounded text-sm font-semibold leading-5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              <a href={item.url} target="_blank" rel="noopener noreferrer" className="line-clamp-2 rounded text-sm font-semibold leading-5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !isExtensionEnvironment()) return; event.preventDefault(); open(name, item); }}>
-                {item.title || item.username || item.caption?.slice(0, 90) || `Instagram Post · ${item.shortcode}`}</a>
+                {title}</a>
               <p className="truncate text-xs text-muted-foreground">{query.trim() && `${name} · `}{item.username ? `@${item.username.replace(/^@/, '')} · ` : ''}{index + 1} / {count}</p>
-              {item.notes && <p className="line-clamp-2 text-sm text-muted-foreground">{item.notes}</p>}
-              {!!item.tags?.length && <ul aria-label="Tags" className="flex flex-wrap gap-1 pt-1">{item.tags.map(tag => <li key={tag}><button className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setQuery(tag); searchRef.current?.focus(); }}>{tag}</button></li>)}</ul>}
+              {query.trim() && matches.filter(match => !['URL', 'Code'].includes(match.field)).map(({ field, value }) => <p key={`${field}:${value}`} className="truncate text-xs text-muted-foreground"><strong className="font-medium">{field}:</strong> {value}</p>)}
+              {!!item.tags?.length && query.trim() && <ul aria-label="Tags" className="flex flex-wrap gap-1 pt-1">{item.tags.map(tag => <li key={tag}><button className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setQuery(tag); searchRef.current?.focus(); }}>{tag}</button></li>)}</ul>}
               <a className="block truncate rounded text-xs text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`Play Instagram post ${item.shortcode}`} onClick={event => {
                 if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !isExtensionEnvironment()) return;
                 event.preventDefault(); open(name, item);
               }}>{item.url}</a>
             </div>
-            <div className="flex shrink-0 flex-col gap-1">
-              <Button id={`notes-${encodeURIComponent(name)}-${item.shortcode}`} size="icon" variant="ghost" className="h-8 w-8" aria-label={`Edit notes for ${item.title || item.shortcode}`} disabled={busy} onClick={() => setEditor({ name, item, title: item.title || '', notes: item.notes || '', tags: item.tags?.join(', ') || '' })}><Pencil /></Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Move ${item.title || item.shortcode} up`} disabled={busy || index === 0} onClick={() => { movedPost.current = `notes-${encodeURIComponent(name)}-${item.shortcode}`; run(() => movePlaylistItem(name, item.shortcode, -1), 'Post moved up.'); }}><ArrowUp /></Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Move ${item.title || item.shortcode} down`} disabled={busy || index + 1 === count} onClick={() => { movedPost.current = `notes-${encodeURIComponent(name)}-${item.shortcode}`; run(() => movePlaylistItem(name, item.shortcode, 1), 'Post moved down.'); }}><ArrowDown /></Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={`Remove ${item.title || item.shortcode} from ${name}`} disabled={busy} onClick={() => run(() => removeUrlsFromPlaylist(name, [item.url]), 'Post removed from this playlist. Your Instagram save is unchanged.')}><X /></Button>
-            </div>
+            <Button id={`edit-${encodeURIComponent(name)}-${item.shortcode}`} size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label={`Edit post ${postTitle(item)}`} disabled={busy} onClick={() => { setError(''); setEditor({ name, item, title: item.title || '', notes: item.notes || '', tags: item.tags?.join(', ') || '', position: String(index + 1) }); }}><Pencil /></Button>
           </article>)}
           {!rows.length && <div className="space-y-2 px-6 py-12 text-center"><ListMusic className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" /><p className="font-medium">{loading ? 'Loading your playlists' : query.trim() ? 'No matching posts' : 'Make room for what matters'}</p><p className="text-sm text-muted-foreground">{query.trim() ? 'Try another word, creator, or tag.' : 'Add a URL above or collect a saved collection below.'}</p>{query && <Button variant="outline" size="sm" onClick={() => setQuery('')}>Clear Search</Button>}</div>}
         </div>
+        </details>
         {pages > 1 && <nav aria-label="Post result pages" className="flex items-center justify-between gap-2"><Button variant="outline" size="sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-xs text-muted-foreground">Page {currentPage + 1} of {pages}</span><Button variant="outline" size="sm" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></nav>}
       </div>
     </div>
@@ -185,17 +185,19 @@ export const PlaylistManager = () => {
         selectedRef.current = name; setSelected(name); setQuery(''); setNameDialog(null);
       }, 'Playlist saved.'); }}><label className="block space-y-2"><span className="text-sm font-medium">Playlist name</span><Input autoFocus value={nameValue} onChange={e => setNameValue(e.target.value)} required /></label><Button disabled={busy || !nameValue.trim()}>Save Playlist</Button></form>
     </DialogContent></Dialog>
-    <Dialog open={!!editor} onOpenChange={open => { if (!open && !busy) setEditor(null); }}><DialogContent><DialogHeader><DialogTitle>Make it easier to find</DialogTitle><DialogDescription>Your personal notes stay in this browser and are included in exports.</DialogDescription></DialogHeader>
+    <Dialog open={!!editor} onOpenChange={open => { if (!open && !busy) setEditor(null); }}><DialogContent><DialogHeader><DialogTitle>Edit post</DialogTitle><DialogDescription>Your personal notes stay in this browser and are included in exports.</DialogDescription></DialogHeader>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {editor && <form className="space-y-4" onSubmit={event => { event.preventDefault(); run(async () => {
-        await annotatePlaylistItem(editor.name, editor.item.shortcode, { title: editor.title.trim(), notes: editor.notes.trim(), tags: editor.tags.split(',').map(tag => tag.trim()).filter(Boolean) }); setEditor(null);
+        await annotatePlaylistItem(editor.name, editor.item.shortcode, { title: editor.title.trim(), notes: editor.notes.trim(), tags: editor.tags.split(',').map(tag => tag.trim()).filter(Boolean) }, Number(editor.position)); setEditor(null);
       }, 'Title, notes, and tags saved.'); }}>
         <label className="block space-y-1"><span className="text-sm font-medium">Your title</span><Input maxLength={160} value={editor.title} onChange={e => setEditor({ ...editor, title: e.target.value })} placeholder="What do you want to remember?" /></label>
         <label className="block space-y-1"><span className="text-sm font-medium">Notes</span><Textarea maxLength={5000} value={editor.notes} onChange={e => setEditor({ ...editor, notes: e.target.value })} placeholder="A useful detail, a tool name, or how this made you feel" /></label>
         <label className="block space-y-1"><span className="text-sm font-medium">Tags, separated by commas</span><Input value={editor.tags} onChange={e => setEditor({ ...editor, tags: e.target.value })} placeholder="motivation, tools, calm" /><span className="block text-xs text-muted-foreground">Up to 20 tags, 64 characters each.</span></label>
-        <Button disabled={busy}>Save Notes</Button>
+        <label className="block space-y-1"><span className="text-sm font-medium">Position in playlist</span><Input type="number" min={1} max={playlists[editor.name]?.length || 1} step={1} required value={editor.position} onChange={event => setEditor({ ...editor, position: event.target.value })} /><span className="block text-xs text-muted-foreground">Move directly to any position from 1 to {playlists[editor.name]?.length || 1}.</span></label>
+        <div className="flex justify-between gap-2"><Button type="button" variant="outline" className="text-destructive" disabled={busy} onClick={() => setDeletePost({ name: editor.name, item: editor.item })}><Trash2 />Remove from Playlist</Button><Button disabled={busy}>Save Changes</Button></div>
       </form>}
     </DialogContent></Dialog>
+    <AlertDialog open={!!deletePost} onOpenChange={open => { if (!open) setDeletePost(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove this post?</AlertDialogTitle><AlertDialogDescription>This removes “{deletePost && postTitle(deletePost.item)}” from this local playlist. Your Instagram save is unchanged.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Keep Post</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { const post = deletePost; setDeletePost(null); if (post) run(async () => { await removeUrlsFromPlaylist(post.name, [post.item.url]); setEditor(null); }, 'Post removed from this playlist.'); }}>Remove Post</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <AlertDialog open={!!deleting} onOpenChange={open => { if (!open) setDeleting(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete “{deleting}”?</AlertDialogTitle><AlertDialogDescription>This removes the local playlist and its notes. Your Instagram saved posts are unchanged.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Keep Playlist</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { const name = deleting; setDeleting(null); if (name) run(async () => { await deletePlaylist(name); headingRef.current?.focus(); }, 'Playlist deleted.'); }}><Trash2 className="mr-2 h-4 w-4" />Delete Playlist</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <AlertDialog open={!!importing} onOpenChange={open => { if (!open) setImporting(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Import {importing && Object.keys(importing.playlists).length} playlists?</AlertDialogTitle><AlertDialogDescription>Playlists with matching names will be replaced, including their notes and tags. Other playlists stay unchanged.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { const preview = importing; setImporting(null); if (preview) run(async () => { await saveAllPlaylists(preview.playlists); if (preview.active && Object.prototype.hasOwnProperty.call(preview.playlists, preview.active)) await setActivePlaylistName(preview.active); }, 'Playlists imported.'); }}>Import Playlists</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </section>;

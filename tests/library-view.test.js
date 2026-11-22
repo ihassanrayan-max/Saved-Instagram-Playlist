@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { searchLibrary } from '../public/library-view.js';
+import { searchLibrary, matchPost, postTitle } from '../public/library-view.js';
 import { normalizeItem, validatePlaylists } from '../public/playlist-model.js';
 import { createRepository } from '../public/playlist-repository.js';
 import { memoryStorage } from './helpers.js';
@@ -34,4 +34,24 @@ test('moving and annotating concurrent posts preserves metadata and playlist mem
   await repository('move', { name: 'Feelings', shortcode: 'a', direction: -1 });
   assert.deepEqual((await repository('get', { name: 'Feelings' })).map(item => item.shortcode), ['a', 'c', 'b']);
   await assert.rejects(repository('move', { name: 'Feelings', shortcode: 'a', direction: 5 }));
+});
+test('queue results explain matching tags and creators while displaying a readable title', () => {
+  const item = post('code', { title: 'You Never Give Up', username: 'anime_creator', tags: ['Demon Slayer'], caption: 'Keep going.' });
+  assert.deepEqual(matchPost(item, 'demon slayer'), { title: 'You Never Give Up', matches: [{ field: 'Tag', value: 'Demon Slayer' }] });
+  assert.equal(matchPost(item, 'anime_creator').matches[0].field, 'Creator');
+  assert.equal(matchPost(item, 'never give').matches[0].field, 'Title');
+  assert.equal(postTitle(post('x', { caption: 'I will make it happen.\nSecond line' })), 'I will make it happen.');
+  assert.equal(matchPost(item, 'unrelated'), null);
+});
+test('editing a position moves directly across long playlists and rejects partial invalid edits', async () => {
+  const repository = createRepository(memoryStorage());
+  await repository('create', { name: 'Long queue' });
+  await repository('add', { name: 'Long queue', items: Array.from({ length: 212 }, (_, i) => post(`item${i}`)) });
+  await repository('annotate', { name: 'Long queue', shortcode: 'item0', metadata: { title: 'Moved post', notes: 'Preserved', tags: ['test'] }, position: 100 });
+  const moved = await repository('get', { name: 'Long queue' });
+  assert.equal(moved[99].shortcode, 'item0'); assert.equal(moved[99].title, 'Moved post'); assert.equal(moved.length, 212);
+  await assert.rejects(repository('annotate', { name: 'Long queue', shortcode: 'item0', metadata: { title: 'Should not save' }, position: 999 }), /Position/);
+  assert.deepEqual(await repository('get', { name: 'Long queue' }), moved);
+  await repository('position', { name: 'Long queue', shortcode: 'item0', position: 1 });
+  assert.equal((await repository('get', { name: 'Long queue' }))[0].shortcode, 'item0');
 });

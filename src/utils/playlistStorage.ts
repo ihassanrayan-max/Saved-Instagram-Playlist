@@ -46,7 +46,8 @@ export const addUrlsToPlaylist = (name: string, items: PlaylistItem[]) => comman
 export const removeUrlsFromPlaylist = (name: string, urls: string[]) => command<void>('remove', { name, urls });
 export const reorderPlaylist = savePlaylist;
 export const movePlaylistItem = (name: string, shortcode: string, direction: -1 | 1) => command<void>('move', { name, shortcode, direction });
-export const annotatePlaylistItem = (name: string, shortcode: string, metadata: Pick<PlaylistItem, 'title' | 'notes' | 'tags'>) => command<void>('annotate', { name, shortcode, metadata });
+export const positionPlaylistItem = (name: string, shortcode: string, position: number) => command<void>('position', { name, shortcode, position });
+export const annotatePlaylistItem = (name: string, shortcode: string, metadata: Pick<PlaylistItem, 'title' | 'notes' | 'tags'>, position?: number) => command<void>('annotate', { name, shortcode, metadata, ...(position !== undefined ? { position } : {}) });
 export const saveAllPlaylists = (playlists: PlaylistsData) => command<void>('import', { playlists });
 export async function getActivePlaylist(): Promise<PlaylistItem[]> {
   const name = await getActivePlaylistName();
