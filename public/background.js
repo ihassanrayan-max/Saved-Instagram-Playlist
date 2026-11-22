@@ -1,52 +1,59 @@
-// Background script for playlist extension
-// Handles messaging between popup and content scripts
+import { createRepository } from './playlist-repository.js';
+import { openPlaylistItem } from './play-item.js';
+import { readPlayer, writePlayer } from './player-session.js';
+const library = createRepository(chrome.storage.local);
+let playbackWrites = Promise.resolve();
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, respond) => {
+  if (sender.id !== chrome.runtime.id) return false;
+  if (request.type === 'PLAY_ITEM') {
+    if (sender.tab) { respond({ ok: false, error: 'Open posts from Playlist Manager.' }); return false; }
+    const task = playbackWrites.then(() => openPlaylistItem({ library, tabs: chrome.tabs, session: chrome.storage.session }, request.args));
+    playbackWrites = task.catch(() => {});
+    task.then(() => respond({ ok: true }), error => respond({ ok: false, error: error.message }));
+    return true;
+  }
+  if (request.type === 'PLAYER_GET' || request.type === 'PLAYER_SET') {
+    if (!sender.tab?.id) { respond({ ok: false, error: 'Playback state requires an Instagram tab.' }); return false; }
+    const task = playbackWrites.then(() => request.type === 'PLAYER_GET'
+      ? readPlayer(chrome.storage.session, sender, request.args?.name)
+      : writePlayer(chrome.storage.session, sender, request.args?.name, request.args.state).then(() => null));
+    playbackWrites = task.catch(() => {});
+    task.then(data => respond({ ok: true, data }), error => respond({ ok: false, error: error.message }));
+    return true;
+  }
+  if (request.type === 'PLAYER_CONTEXT') {
+    if (!sender.tab?.id) return false;
+    const task = playbackWrites.then(async () => {
+      const name = await library('active');
+      const [items, state] = await Promise.all([name ? library('get', { name }) : [], readPlayer(chrome.storage.session, sender, name)]);
+      return { name, items, state };
+    });
+    playbackWrites = task.catch(() => {});
+    task.then(data => respond({ ok: true, data }), error => respond({ ok: false, error: error.message }));
+    return true;
+  }
+  if (request.type === 'LIBRARY') {
+    library(request.operation, request.args).then(
+      data => respond({ ok: true, data }),
+      error => respond({ ok: false, error: error.message }),
+    );
+    return true;
+  }
+  if (request.type === 'END_SESSION') {
+    const task = (async () => {
+      const tabs = await chrome.tabs.query({ url: 'https://www.instagram.com/*' });
+      await Promise.allSettled(tabs.map(tab => chrome.tabs.sendMessage(tab.id, { type: 'END_PLAYBACK' })));
+      await library('activate', { name: null });
+    })();
+    task.then(() => respond({ ok: true }), error => respond({ ok: false, error: error.message }));
+    return true;
+  }
   if (request.type === 'OPEN_POPUP') {
-    // Open the extension popup
-    chrome.action.openPopup?.().catch(() => {
-      // If openPopup fails, try to focus the extension icon
-      console.log('Could not open popup programmatically');
-    });
-    sendResponse({ success: true });
-  } else if (request.type === 'PLAYLIST_UPDATED') {
-    // Notify all Instagram tabs that playlist was updated
-    chrome.tabs.query({ url: 'https://www.instagram.com/*' }, (tabs) => {
-      tabs.forEach(tab => {
-        if (tab.id) {
-          chrome.tabs.sendMessage(tab.id, {
-            type: 'PLAYLIST_STATE_CHANGED',
-            data: request.data
-          }).catch(() => {
-            // Tab might not have content script loaded yet
-          });
-        }
-      });
-    });
-    sendResponse({ success: true });
-  } else if (request.type === 'COLLECTION_UPDATE') {
-    // Forward collection updates to popup if it's open
-    // The popup will listen for these messages
-    sendResponse({ success: true });
+    chrome.action.openPopup().then(() => respond({ ok: true }), error => respond({ ok: false, error: error.message }));
+    return true;
   }
-  return true; // Keep channel open for async response
+  return false;
 });
 
-// Listen for storage changes and notify content scripts
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && (changes.instagram_playlists || changes.instagram_active_playlist)) {
-    // Notify all Instagram tabs
-    chrome.tabs.query({ url: 'https://www.instagram.com/*' }, (tabs) => {
-      tabs.forEach(tab => {
-        if (tab.id) {
-          chrome.tabs.sendMessage(tab.id, {
-            type: 'PLAYLIST_STORAGE_CHANGED'
-          }).catch(() => {
-            // Tab might not have content script loaded yet
-          });
-        }
-      });
-    });
-  }
-});
-
+chrome.runtime.onInstalled.addListener(() => { library('active').catch(console.error); });

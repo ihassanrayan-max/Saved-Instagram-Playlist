@@ -3,12 +3,12 @@ import { CollectionController } from '@/components/CollectionController';
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-background max-w-6xl mx-auto">
-      <div className="p-4 space-y-4">
+    <main className="playlist-app min-h-screen bg-background text-foreground mx-auto">
+      <div className="p-4 sm:p-6 space-y-7">
         <PlaylistManager />
         <CollectionController />
       </div>
-    </div>
+    </main>
   );
 };
 

@@ -1,763 +1,202 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Play, Plus, Search, ArrowUp, ArrowDown, Pencil, Trash2, Download, Upload, ListMusic, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Plus,
-  Play,
-  Pause,
-  Edit2,
-  Trash2,
-  MoreVertical,
-  ExternalLink,
-  Check,
-  X,
-  GripVertical,
-  Download,
-  Upload,
-  Link as LinkIcon,
-  List,
-} from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { normalizeItem, validatePlaylists } from '../../public/playlist-model.js';
+import { searchLibrary } from '../../public/library-view.js';
+import { getAllPlaylists, getActivePlaylistName, setActivePlaylistName, subscribeLibrary, createPlaylist, renamePlaylist, deletePlaylist, addUrlsToPlaylist, removeUrlsFromPlaylist, movePlaylistItem, annotatePlaylistItem, saveAllPlaylists, type PlaylistItem, type PlaylistsData } from '@/utils/playlistStorage';
 import { cn } from '@/lib/utils';
-import {
-  getAllPlaylists,
-  getActivePlaylistName,
-  setActivePlaylistName,
-  createPlaylist,
-  deletePlaylist,
-  renamePlaylist,
-  getPlaylist,
-  addUrlsToPlaylist,
-  removeUrlsFromPlaylist,
-  reorderPlaylist,
-  saveAllPlaylists,
-  type PlaylistItem,
-  type PlaylistsData,
-} from '@/utils/playlistStorage';
+import { sendExtensionMessage, isExtensionEnvironment } from '@/utils/extensionContext';
+
+type NotesEditor = { name: string; item: PlaylistItem; title: string; notes: string; tags: string };
+type ImportPreview = { playlists: PlaylistsData; active: string | null };
 
 export const PlaylistManager = () => {
   const [playlists, setPlaylists] = useState<PlaylistsData>({});
-  const [activePlaylistName, setActivePlaylistNameState] = useState<string | null>(null);
-  const [editingPlaylist, setEditingPlaylist] = useState<string | null>(null);
-  const [newPlaylistName, setNewPlaylistName] = useState('');
-  const [renameValue, setRenameValue] = useState('');
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [selectedPlaylist, setSelectedPlaylist] = useState<string | null>(null);
-  const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
+  const [active, setActive] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const selectedRef = useRef(selected); selectedRef.current = selected;
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [status, setStatus] = useState('');
+  const [nameDialog, setNameDialog] = useState<'create' | 'rename' | null>(null);
+  const [nameValue, setNameValue] = useState('');
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [editor, setEditor] = useState<NotesEditor | null>(null);
+  const [importing, setImporting] = useState<ImportPreview | null>(null);
   const [manualUrl, setManualUrl] = useState('');
-  const [isAddingUrl, setIsAddingUrl] = useState(false);
-  const [importConfirm, setImportConfirm] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const movedPost = useRef<string | null>(null);
+  const generation = useRef(0);
+  const results = useMemo(() => searchLibrary(playlists, selected, query), [playlists, selected, query]);
+  const pages = Math.max(1, Math.ceil(results.length / 30));
+  const currentPage = Math.min(page, pages - 1);
+  const rows = results.slice(currentPage * 30, (currentPage + 1) * 30);
+  const names = Object.keys(playlists);
+  const total = Object.values(playlists).reduce((count, items) => count + items.length, 0);
 
-  // Load playlists and active playlist
-  const loadData = useCallback(async () => {
-    const allPlaylists = await getAllPlaylists();
-    const active = await getActivePlaylistName();
-    setPlaylists(allPlaylists);
-    setActivePlaylistNameState(active);
-    
-    if (active && allPlaylists[active]) {
-      setSelectedPlaylist(active);
-      setPlaylistItems(allPlaylists[active]);
-    }
+  const load = useCallback(async () => {
+    const request = ++generation.current;
+    const [library, activeName] = await Promise.all([getAllPlaylists(), getActivePlaylistName()]);
+    if (request !== generation.current) return;
+    setPlaylists(library); setActive(activeName);
+    const previous = selectedRef.current;
+    setSelected(previous && Object.prototype.hasOwnProperty.call(library, previous) ? previous : activeName || Object.keys(library)[0] || null);
+    setLoading(false);
   }, []);
-
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const requestGeneration = generation;
+    const refresh = () => load().catch(e => { setError(e.message); setLoading(false); });
+    refresh(); const unsubscribe = subscribeLibrary(refresh);
+    return () => { requestGeneration.current++; unsubscribe(); };
+  }, [load]);
+  useEffect(() => setPage(0), [query, selected]);
+  useEffect(() => {
+    if (!movedPost.current || busy) return;
+    document.getElementById(movedPost.current)?.focus({ preventScroll: true });
+    movedPost.current = null;
+  }, [playlists, busy]);
 
-  // Handle creating a new playlist
-  const handleCreatePlaylist = async () => {
-    if (!newPlaylistName.trim()) return;
-    
-    try {
-      await createPlaylist(newPlaylistName.trim());
-      setNewPlaylistName('');
-      setIsCreating(false);
-      await loadData();
-      notifyPlaylistUpdate();
-    } catch (error: any) {
-      alert(error.message || 'Failed to create playlist');
-    }
+  const run = async (action: () => Promise<void>, message?: string) => {
+    if (busy) return;
+    setBusy(true); setError(''); setStatus('');
+    try { await action(); await load(); if (message) setStatus(message); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.'); }
+    finally { setBusy(false); }
   };
+  const open = (name: string, item: PlaylistItem) => run(async () => {
+    const response = await sendExtensionMessage({ type: 'PLAY_ITEM', args: { name, url: item.url } });
+    if (!response?.ok) throw new Error(response?.error || 'Could not open this post.');
+  });
+  const exportLibrary = () => run(async () => {
+    const data = { version: '2.0', playlists: await getAllPlaylists(), activePlaylist: active, exportDate: new Date().toISOString() };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `instagram-playlists-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, 'Library exported, including your notes and tags.');
 
-  // Notify background script of playlist changes
-  const notifyPlaylistUpdate = () => {
-    if (typeof chrome !== 'undefined' && (chrome as any).runtime) {
-      (chrome as any).runtime.sendMessage({
-        type: 'PLAYLIST_UPDATED',
-        data: { timestamp: Date.now() }
-      }).catch(() => {
-        // Ignore errors
-      });
-    }
-  };
-
-  // Handle deleting a playlist
-  const handleDeletePlaylist = async (name: string) => {
-    try {
-      await deletePlaylist(name);
-      setDeleteConfirm(null);
-      if (selectedPlaylist === name) {
-        setSelectedPlaylist(null);
-        setPlaylistItems([]);
-      }
-      await loadData();
-      notifyPlaylistUpdate();
-    } catch (error: any) {
-      alert(error.message || 'Failed to delete playlist');
-    }
-  };
-
-  // Handle renaming a playlist
-  const handleRenamePlaylist = async (oldName: string, newName: string) => {
-    if (!newName.trim() || newName === oldName) {
-      setEditingPlaylist(null);
-      return;
-    }
-    
-    try {
-      await renamePlaylist(oldName, newName.trim());
-      setEditingPlaylist(null);
-      if (selectedPlaylist === oldName) {
-        setSelectedPlaylist(newName.trim());
-      }
-      await loadData();
-      notifyPlaylistUpdate();
-    } catch (error: any) {
-      alert(error.message || 'Failed to rename playlist');
-    }
-  };
-
-  // Handle activating a playlist
-  const handleActivatePlaylist = async (name: string) => {
-    await setActivePlaylistName(name);
-    setActivePlaylistNameState(name);
-    setSelectedPlaylist(name);
-    setPlaylistItems(playlists[name] || []);
-    notifyPlaylistUpdate();
-  };
-
-  // Handle deactivating the active playlist
-  const handleDeactivatePlaylist = async () => {
-    await setActivePlaylistName(null);
-    setActivePlaylistNameState(null);
-    notifyPlaylistUpdate();
-  };
-
-  // Handle selecting a playlist to view/edit
-  const handleSelectPlaylist = (name: string) => {
-    setSelectedPlaylist(name);
-    setPlaylistItems(playlists[name] || []);
-  };
-
-  // Handle removing URLs from playlist
-  const handleRemoveUrls = async (playlistName: string, urls: string[]) => {
-    try {
-      await removeUrlsFromPlaylist(playlistName, urls);
-      await loadData();
-      if (selectedPlaylist === playlistName) {
-        setPlaylistItems(await getPlaylist(playlistName));
-      }
-      notifyPlaylistUpdate();
-    } catch (error: any) {
-      alert(error.message || 'Failed to remove URLs');
-    }
-  };
-
-  // Validate Instagram URL
-  const validateInstagramUrl = (url: string): { valid: boolean; shortcode?: string; fullUrl?: string; error?: string } => {
-    try {
-      // Clean up the URL
-      const cleanUrl = url.trim();
-      
-      // Check if it's a valid Instagram URL
-      // Pattern matches:
-      // - instagram.com/p/SHORTCODE/ (post)
-      // - instagram.com/reel/SHORTCODE/ (reel)
-      // - instagram.com/USERNAME/p/SHORTCODE/ (post with username)
-      // - instagram.com/USERNAME/reel/SHORTCODE/ (reel with username)
-      const instagramPattern = /instagram\.com\/(?:[^\/]+\/)?(p|reel)\/([^\/\?]+)/i;
-      const match = cleanUrl.match(instagramPattern);
-      
-      if (!match) {
-        return { valid: false, error: 'Please enter a valid Instagram post or reel URL' };
-      }
-      
-      const postType = match[1]; // 'p' or 'reel'
-      const shortcode = match[2];
-      
-      // Construct full URL (always use /p/ format for consistency)
-      const fullUrl = `https://www.instagram.com/p/${shortcode}/`;
-      
-      return { valid: true, shortcode, fullUrl };
-    } catch (e) {
-      return { valid: false, error: 'Invalid URL format' };
-    }
-  };
-
-  // Handle adding manual URL
-  const handleAddManualUrl = async (playlistName: string, url: string) => {
-    if (!url.trim()) return;
-    
-    const validation = validateInstagramUrl(url);
-    if (!validation.valid) {
-      alert(validation.error);
-      return;
-    }
-    
-    setIsAddingUrl(true);
-    try {
-      const newItem: PlaylistItem = {
-        url: validation.fullUrl || url,
-        shortcode: validation.shortcode || '',
-        thumbnail: undefined,
-        username: undefined,
-        caption: undefined
-      };
-      
-      await addUrlsToPlaylist(playlistName, [newItem]);
-      setManualUrl('');
-      await loadData();
-      if (selectedPlaylist === playlistName) {
-        setPlaylistItems(await getPlaylist(playlistName));
-      }
-      notifyPlaylistUpdate();
-      alert(`URL added to "${playlistName}"`);
-    } catch (error: any) {
-      alert(error.message || 'Failed to add URL');
-    } finally {
-      setIsAddingUrl(false);
-    }
-  };
-
-  // Handle exporting all playlists to JSON
-  const handleExportPlaylists = async () => {
-    try {
-      const allPlaylists = await getAllPlaylists();
-      const activePlaylist = await getActivePlaylistName();
-      
-      const exportData = {
-        playlists: allPlaylists,
-        activePlaylist: activePlaylist,
-        exportDate: new Date().toISOString(),
-        version: '1.0'
-      };
-      
-      const jsonString = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `instagram-playlists-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      alert('Playlists exported successfully!');
-    } catch (error: any) {
-      alert(error.message || 'Failed to export playlists');
-    }
-  };
-
-  // Handle importing playlists from JSON
-  const handleImportPlaylists = async (file: File, confirmed: boolean = false) => {
-    try {
-      const text = await file.text();
-      const importData = JSON.parse(text);
-      
-      // Validate import data structure
-      if (!importData.playlists || typeof importData.playlists !== 'object') {
-        throw new Error('Invalid file format. Expected playlists object.');
-      }
-      
-      // Check if importing will overwrite existing playlists
-      if (!confirmed) {
-        const existingPlaylists = await getAllPlaylists();
-        const existingNames = Object.keys(existingPlaylists);
-        const importNames = Object.keys(importData.playlists);
-        const willOverwrite = importNames.some(name => existingNames.includes(name));
-        
-        if (willOverwrite) {
-          setImportConfirm(true);
-          // Store file for later use
-          (window as any).__pendingImportFile = file;
-          return;
-        }
-      }
-      
-      // Merge or replace playlists
-      const allPlaylists = await getAllPlaylists();
-      const mergedPlaylists = { ...allPlaylists, ...importData.playlists };
-      
-      await saveAllPlaylists(mergedPlaylists);
-      
-      // Restore active playlist if provided
-      if (importData.activePlaylist) {
-        await setActivePlaylistName(importData.activePlaylist);
-      }
-      
-      await loadData();
-      notifyPlaylistUpdate();
-      setImportConfirm(false);
-      delete (window as any).__pendingImportFile;
-      
-      const importNames = Object.keys(importData.playlists);
-      alert(`Successfully imported ${importNames.length} playlist(s)!`);
-    } catch (error: any) {
-      alert(error.message || 'Failed to import playlists. Please check the file format.');
-      setImportConfirm(false);
-      delete (window as any).__pendingImportFile;
-    }
-  };
-
-  // Handle file input for import
-  const handleImportFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleImportPlaylists(file);
-    }
-    // Reset input
-    e.target.value = '';
-  };
-
-  // Confirm import with overwrite
-  const handleConfirmImport = () => {
-    const file = (window as any).__pendingImportFile;
-    if (file) {
-      handleImportPlaylists(file, true);
-    }
-  };
-
-  // Handle importing from current Instagram collection
-  const handleImportFromCollection = async (playlistName: string) => {
-    try {
-      // Get current collection from storage
-      if (typeof chrome !== 'undefined' && (chrome as any).storage) {
-        const result = await (chrome as any).storage.local.get(['instagram_playlist']);
-        if (result.instagram_playlist && Array.isArray(result.instagram_playlist)) {
-          await addUrlsToPlaylist(playlistName, result.instagram_playlist);
-          await loadData();
-          if (selectedPlaylist === playlistName) {
-            setPlaylistItems(await getPlaylist(playlistName));
-          }
-          notifyPlaylistUpdate();
-          alert(`Imported ${result.instagram_playlist.length} items to "${playlistName}"`);
-        } else {
-          alert('No collection found. Please collect URLs from Instagram first.');
-        }
-      } else {
-        const stored = sessionStorage.getItem('instagram_playlist');
-        if (stored) {
-          const items = JSON.parse(stored);
-          await addUrlsToPlaylist(playlistName, items);
-          await loadData();
-          if (selectedPlaylist === playlistName) {
-            setPlaylistItems(await getPlaylist(playlistName));
-          }
-          notifyPlaylistUpdate();
-          alert(`Imported ${items.length} items to "${playlistName}"`);
-        } else {
-          alert('No collection found. Please collect URLs from Instagram first.');
-        }
-      }
-    } catch (error: any) {
-      alert(error.message || 'Failed to import collection');
-    }
-  };
-
-  return (
-    <div className="w-full max-w-4xl mx-auto p-4 space-y-4">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Playlist Manager</h1>
-          <p className="text-sm text-muted-foreground">Manage your Instagram playlists</p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleExportPlaylists}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
-          <input
-            id="import-file-input"
-            type="file"
-            accept=".json"
-            onChange={handleImportFileSelect}
-            className="hidden"
-          />
-          <Button
-            variant="outline"
-            onClick={() => document.getElementById('import-file-input')?.click()}
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Import
-          </Button>
-          <Dialog open={isCreating} onOpenChange={setIsCreating}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                New Playlist
-              </Button>
-            </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Playlist</DialogTitle>
-              <DialogDescription>
-                Enter a name for your new playlist
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <Input
-                placeholder="Playlist name"
-                value={newPlaylistName}
-                onChange={(e) => setNewPlaylistName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleCreatePlaylist();
-                  }
-                }}
-              />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreating(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleCreatePlaylist}>Create</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        </div>
+  return <section className="space-y-5" aria-labelledby="library-heading" onKeyDown={event => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); searchRef.current?.focus(); }
+  }}>
+    <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
+      <div className="flex items-center gap-3">
+        <div className="grid h-11 w-11 place-items-center rounded-xl gradient-instagram text-white" aria-hidden="true"><ListMusic size={23} /></div>
+        <div><h1 ref={headingRef} tabIndex={-1} id="library-heading" className="text-xl font-semibold tracking-tight">Playlist Manager</h1>
+          <p className="text-sm text-muted-foreground">{names.length} playlists · {total.toLocaleString()} saved posts</p></div>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Playlist List */}
-        <div className="md:col-span-1 space-y-2">
-          <h2 className="text-lg font-semibold mb-2">Playlists</h2>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto">
-            {Object.keys(playlists).length === 0 ? (
-              <div className="text-center p-12 rounded-xl border-2 border-dashed border-border/50 bg-gradient-to-br from-muted/30 to-transparent animate-fade-in">
-                <div className="w-20 h-20 mx-auto mb-4 rounded-full gradient-instagram flex items-center justify-center shadow-lg">
-                  <List className="h-10 w-10 text-white" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2 text-gradient">No playlists yet</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Create your first playlist to get started!
-                </p>
-              </div>
-            ) : (
-              Object.keys(playlists).map((name) => (
-                <div
-                  key={name}
-                  className={cn(
-                    "p-4 rounded-xl border cursor-pointer transition-all duration-300 hover-lift group relative overflow-hidden",
-                    selectedPlaylist === name
-                      ? "bg-gradient-to-br from-primary/20 via-primary/10 to-accent/20 border-primary/50 shadow-lg shadow-primary/20"
-                      : "bg-card/50 hover:bg-card/80 border-border/50",
-                    activePlaylistName === name && "ring-2 ring-primary/50 shadow-md"
-                  )}
-                  onClick={() => handleSelectPlaylist(name)}
-                >
-                  {/* Gradient overlay for active */}
-                  {selectedPlaylist === name && (
-                    <div className="absolute inset-0 gradient-animated opacity-10 pointer-events-none" />
-                  )}
-                  
-                  <div className="relative z-10 flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className={cn(
-                        "w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-all",
-                        selectedPlaylist === name 
-                          ? "gradient-instagram shadow-lg" 
-                          : "bg-muted group-hover:bg-primary/20"
-                      )}>
-                        <List className={cn(
-                          "h-5 w-5 transition-colors",
-                          selectedPlaylist === name ? "text-white" : "text-muted-foreground group-hover:text-primary"
-                        )} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        {editingPlaylist === name ? (
-                          <Input
-                            value={renameValue}
-                            onChange={(e) => setRenameValue(e.target.value)}
-                            onBlur={() => {
-                              handleRenamePlaylist(name, renameValue);
-                              setRenameValue('');
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleRenamePlaylist(name, renameValue);
-                                setRenameValue('');
-                              } else if (e.key === 'Escape') {
-                                setEditingPlaylist(null);
-                                setRenameValue('');
-                              }
-                            }}
-                            autoFocus
-                            className="h-7 text-sm"
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        ) : (
-                          <>
-                            <h3 className={cn(
-                              "font-semibold truncate transition-colors",
-                              selectedPlaylist === name ? "text-primary" : "text-foreground"
-                            )}>
-                              {name}
-                            </h3>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {playlists[name]?.length || 0} items
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    {activePlaylistName === name && !editingPlaylist && (
-                      <div className="flex-shrink-0 mr-2">
-                        <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                      </div>
-                    )}
-                    {!editingPlaylist && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-white/10">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setEditingPlaylist(name);
-                              setRenameValue(name);
-                            }}
-                          >
-                            <Edit2 className="h-4 w-4 mr-2" />
-                            Rename
-                          </DropdownMenuItem>
-                          {activePlaylistName === name ? (
-                            <DropdownMenuItem
-                              onClick={() => handleDeactivatePlaylist()}
-                            >
-                              <Pause className="h-4 w-4 mr-2" />
-                              Deactivate
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem
-                              onClick={() => handleActivatePlaylist(name)}
-                            >
-                              <Play className="h-4 w-4 mr-2" />
-                              Activate
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => handleImportFromCollection(name)}
-                          >
-                            <ExternalLink className="h-4 w-4 mr-2" />
-                            Import from Collection
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => setDeleteConfirm(name)}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Playlist Editor */}
-        <div className="md:col-span-2">
-          {selectedPlaylist ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">{selectedPlaylist}</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {playlistItems.length} items
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleImportFromCollection(selectedPlaylist)}
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Import Collection
-                  </Button>
-                  {activePlaylistName === selectedPlaylist ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeactivatePlaylist()}
-                    >
-                      <Pause className="h-4 w-4 mr-2" />
-                      Deactivate
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      onClick={() => handleActivatePlaylist(selectedPlaylist)}
-                    >
-                      <Play className="h-4 w-4 mr-2" />
-                      Activate
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Manual URL Addition */}
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Paste Instagram post/reel URL here..."
-                  value={manualUrl}
-                  onChange={(e) => setManualUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !isAddingUrl) {
-                      handleAddManualUrl(selectedPlaylist, manualUrl);
-                    }
-                  }}
-                  className="flex-1"
-                />
-                <Button
-                  onClick={() => handleAddManualUrl(selectedPlaylist, manualUrl)}
-                  disabled={isAddingUrl || !manualUrl.trim()}
-                >
-                  <LinkIcon className="h-4 w-4 mr-2" />
-                  {isAddingUrl ? 'Adding...' : 'Add URL'}
-                </Button>
-              </div>
-
-              <div className="border rounded-lg max-h-[500px] overflow-y-auto">
-                {playlistItems.length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground">
-                    <p>This playlist is empty</p>
-                    <p className="text-sm mt-2">
-                      Import URLs from your Instagram collection or add them manually
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y">
-                    {playlistItems.map((item, index) => (
-                      <div
-                        key={item.url}
-                        className="p-3 hover:bg-muted/50 flex items-center gap-3"
-                      >
-                        <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">
-                            {item.username || item.shortcode || 'Instagram Post'}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {item.url}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 flex-shrink-0"
-                          onClick={() => handleRemoveUrls(selectedPlaylist, [item.url])}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="p-8 text-center text-muted-foreground border rounded-lg">
-              <p>Select a playlist to view and edit</p>
-            </div>
-          )}
-        </div>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" disabled={busy || !names.length} onClick={exportLibrary}><Download />Export</Button>
+        <Button asChild variant="outline" size="sm" disabled={busy}><label className="cursor-pointer"><Upload />Import<input type="file" accept=".json,application/json" className="sr-only" disabled={busy} aria-label="Import playlists from JSON" onChange={async event => {
+          const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
+          try {
+            const data = JSON.parse(await file.text());
+            const validated = validatePlaylists(data.playlists) as PlaylistsData;
+            setImporting({ playlists: validated, active: typeof data.activePlaylist === 'string' ? data.activePlaylist : null });
+          } catch (e) { setError(e instanceof Error ? e.message : 'Invalid playlist file.'); }
+        }} /></label></Button>
+        <Button size="sm" disabled={busy} onClick={() => { setError(''); setNameValue(''); setNameDialog('create'); }}><Plus />New Playlist</Button>
       </div>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Playlist</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{deleteConfirm}"? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteConfirm && handleDeletePlaylist(deleteConfirm)}
-              className="bg-destructive text-destructive-foreground"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Import Confirmation Dialog */}
-      <AlertDialog open={importConfirm} onOpenChange={(open) => !open && setImportConfirm(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Import Playlists</AlertDialogTitle>
-            <AlertDialogDescription>
-              Importing will overwrite existing playlists with the same names. Do you want to continue?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {
-              setImportConfirm(false);
-              delete (window as any).__pendingImportFile;
-            }}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmImport}>
-              Import
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+    </header>
+    <div className="space-y-2">
+      <label htmlFor="library-search" className="text-sm font-medium">Find something you saved</label>
+      <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+        <Input id="library-search" ref={searchRef} type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search playlists, titles, notes, tags, or creators" className="pl-10" aria-describedby="search-help" />
+      </div><p id="search-help" className="text-xs text-muted-foreground">Search across your library. Ctrl/⌘ K focuses search. Notes and tags stay in this browser.</p>
     </div>
-  );
-};
+    {error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>}
+    <p role="status" aria-live="polite" className={cn('text-sm', status ? 'text-foreground' : 'sr-only')}>{status || (busy ? 'Working…' : '')}</p>
+    <div className="grid gap-5 sm:grid-cols-[190px_minmax(0,1fr)]">
+      <nav aria-label="Your playlists" className="space-y-1">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Your library</h2>
+        {names.map(name => <button key={name} className={cn('flex w-full items-center justify-between gap-2 rounded-lg px-3 py-3 text-left text-sm transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', selected === name && 'bg-primary/10 text-primary font-semibold')}
+          aria-current={selected === name ? 'true' : undefined} onClick={() => { setSelected(name); setQuery(''); }}>
+          <span className="min-w-0 truncate">{name}{active === name && <span className="ml-2 text-xs" aria-label="Active playlist">●</span>}</span>
+          <span className="tabular-nums text-xs text-muted-foreground">{playlists[name].length}</span>
+        </button>)}
+        {!names.length && !loading && <p className="py-2 text-sm text-muted-foreground">Create your first playlist, then collect posts from Instagram.</p>}
+      </nav>
+      <div className="min-w-0 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 className="text-lg font-semibold">{query.trim() ? 'Search results' : selected || 'Your saved moments'}</h2>
+            <p className="text-sm text-muted-foreground">{loading ? 'Loading your library…' : `${results.length.toLocaleString()} ${query.trim() ? 'matches across all playlists' : 'posts in this playlist'}`}</p></div>
+          {selected && <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={busy || !playlists[selected]?.length} onClick={() => open(selected, playlists[selected][0])}><Play />Play Playlist</Button>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => run(async () => {
+              if (active === selected && isExtensionEnvironment()) {
+                const response = await sendExtensionMessage({ type: 'END_SESSION' });
+                if (!response.ok) throw new Error(response.error || 'Could not end this session.');
+              } else await setActivePlaylistName(active === selected ? null : selected);
+            }, active === selected ? 'Session ended.' : 'Playlist activated.')}>
+              {active === selected ? 'End Session' : 'Activate'}</Button>
+            <details className="relative"><summary className="cursor-pointer rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Manage</summary>
+              <div className="absolute right-0 z-10 mt-2 flex w-40 flex-col gap-1 rounded-lg border bg-background p-2 shadow-sm">
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setNameValue(selected); setNameDialog('rename'); }}>Rename Playlist</Button>
+                <Button variant="ghost" size="sm" disabled={busy} className="text-destructive" onClick={() => setDeleting(selected)}>Delete Playlist</Button>
+              </div></details>
+          </div>}
+        </div>
+        {!query.trim() && selected && <form className="flex items-end gap-2" onSubmit={event => { event.preventDefault(); run(async () => {
+          const item = normalizeItem({ url: manualUrl.trim() }); await addUrlsToPlaylist(selected, [item]); setManualUrl('');
+        }, 'Post added.'); }}>
+          <div className="flex-1 space-y-1"><label htmlFor="manual-url" className="text-xs font-medium">Add a post by URL</label><Input id="manual-url" type="url" value={manualUrl} onChange={e => setManualUrl(e.target.value)} placeholder="https://www.instagram.com/reel/…" required /></div>
+          <Button variant="outline" disabled={busy || !manualUrl.trim()}>Add Post</Button>
+        </form>}
+        <div className="overflow-hidden rounded-xl border border-border" aria-busy={busy || loading}>
+          {rows.map(({ name, item, index, total: count }) => <article key={`${name}:${item.shortcode}`} className="group flex gap-3 border-b border-border p-3 last:border-b-0 sm:p-4">
+            <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary text-muted-foreground" aria-hidden="true">
+              {item.thumbnail ? <img src={item.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover" onError={event => { event.currentTarget.style.display = 'none'; }} /> : <Play size={18} />}
+            </div>
+            <div className="min-w-0 flex-1 space-y-1">
+              <a href={item.url} target="_blank" rel="noopener noreferrer" className="block rounded text-sm font-semibold leading-5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !isExtensionEnvironment()) return; event.preventDefault(); open(name, item); }}>
+                {item.title || item.username || item.caption?.slice(0, 90) || `Instagram Post · ${item.shortcode}`}</a>
+              <p className="truncate text-xs text-muted-foreground">{query.trim() && `${name} · `}{item.username ? `@${item.username.replace(/^@/, '')} · ` : ''}{index + 1} / {count}</p>
+              {item.notes && <p className="line-clamp-2 text-sm text-muted-foreground">{item.notes}</p>}
+              {!!item.tags?.length && <ul aria-label="Tags" className="flex flex-wrap gap-1 pt-1">{item.tags.map(tag => <li key={tag}><button className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setQuery(tag); searchRef.current?.focus(); }}>{tag}</button></li>)}</ul>}
+              <a className="block truncate rounded text-xs text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`Play Instagram post ${item.shortcode}`} onClick={event => {
+                if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !isExtensionEnvironment()) return;
+                event.preventDefault(); open(name, item);
+              }}>{item.url}</a>
+            </div>
+            <div className="flex shrink-0 flex-col gap-1">
+              <Button id={`notes-${encodeURIComponent(name)}-${item.shortcode}`} size="icon" variant="ghost" className="h-8 w-8" aria-label={`Edit notes for ${item.title || item.shortcode}`} disabled={busy} onClick={() => setEditor({ name, item, title: item.title || '', notes: item.notes || '', tags: item.tags?.join(', ') || '' })}><Pencil /></Button>
+              <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Move ${item.title || item.shortcode} up`} disabled={busy || index === 0} onClick={() => { movedPost.current = `notes-${encodeURIComponent(name)}-${item.shortcode}`; run(() => movePlaylistItem(name, item.shortcode, -1), 'Post moved up.'); }}><ArrowUp /></Button>
+              <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Move ${item.title || item.shortcode} down`} disabled={busy || index + 1 === count} onClick={() => { movedPost.current = `notes-${encodeURIComponent(name)}-${item.shortcode}`; run(() => movePlaylistItem(name, item.shortcode, 1), 'Post moved down.'); }}><ArrowDown /></Button>
+              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" aria-label={`Remove ${item.title || item.shortcode} from ${name}`} disabled={busy} onClick={() => run(() => removeUrlsFromPlaylist(name, [item.url]), 'Post removed from this playlist. Your Instagram save is unchanged.')}><X /></Button>
+            </div>
+          </article>)}
+          {!rows.length && <div className="space-y-2 px-6 py-12 text-center"><ListMusic className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" /><p className="font-medium">{loading ? 'Loading your playlists' : query.trim() ? 'No matching posts' : 'Make room for what matters'}</p><p className="text-sm text-muted-foreground">{query.trim() ? 'Try another word, creator, or tag.' : 'Add a URL above or collect a saved collection below.'}</p>{query && <Button variant="outline" size="sm" onClick={() => setQuery('')}>Clear Search</Button>}</div>}
+        </div>
+        {pages > 1 && <nav aria-label="Post result pages" className="flex items-center justify-between gap-2"><Button variant="outline" size="sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-xs text-muted-foreground">Page {currentPage + 1} of {pages}</span><Button variant="outline" size="sm" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></nav>}
+      </div>
+    </div>
 
+    <Dialog open={!!nameDialog} onOpenChange={open => { if (!open && !busy) setNameDialog(null); }}><DialogContent><DialogHeader><DialogTitle>{nameDialog === 'rename' ? 'Rename Playlist' : 'Create a Playlist'}</DialogTitle><DialogDescription>A place for knowledge, a feeling, or something you want to return to.</DialogDescription></DialogHeader>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <form className="space-y-4" onSubmit={event => { event.preventDefault(); run(async () => {
+        const name = nameValue.trim(); if (nameDialog === 'rename' && selected) await renamePlaylist(selected, name); else await createPlaylist(name);
+        selectedRef.current = name; setSelected(name); setQuery(''); setNameDialog(null);
+      }, 'Playlist saved.'); }}><label className="block space-y-2"><span className="text-sm font-medium">Playlist name</span><Input autoFocus value={nameValue} onChange={e => setNameValue(e.target.value)} required /></label><Button disabled={busy || !nameValue.trim()}>Save Playlist</Button></form>
+    </DialogContent></Dialog>
+    <Dialog open={!!editor} onOpenChange={open => { if (!open && !busy) setEditor(null); }}><DialogContent><DialogHeader><DialogTitle>Make it easier to find</DialogTitle><DialogDescription>Your personal notes stay in this browser and are included in exports.</DialogDescription></DialogHeader>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {editor && <form className="space-y-4" onSubmit={event => { event.preventDefault(); run(async () => {
+        await annotatePlaylistItem(editor.name, editor.item.shortcode, { title: editor.title.trim(), notes: editor.notes.trim(), tags: editor.tags.split(',').map(tag => tag.trim()).filter(Boolean) }); setEditor(null);
+      }, 'Title, notes, and tags saved.'); }}>
+        <label className="block space-y-1"><span className="text-sm font-medium">Your title</span><Input maxLength={160} value={editor.title} onChange={e => setEditor({ ...editor, title: e.target.value })} placeholder="What do you want to remember?" /></label>
+        <label className="block space-y-1"><span className="text-sm font-medium">Notes</span><Textarea maxLength={5000} value={editor.notes} onChange={e => setEditor({ ...editor, notes: e.target.value })} placeholder="A useful detail, a tool name, or how this made you feel" /></label>
+        <label className="block space-y-1"><span className="text-sm font-medium">Tags, separated by commas</span><Input value={editor.tags} onChange={e => setEditor({ ...editor, tags: e.target.value })} placeholder="motivation, tools, calm" /><span className="block text-xs text-muted-foreground">Up to 20 tags, 64 characters each.</span></label>
+        <Button disabled={busy}>Save Notes</Button>
+      </form>}
+    </DialogContent></Dialog>
+    <AlertDialog open={!!deleting} onOpenChange={open => { if (!open) setDeleting(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete “{deleting}”?</AlertDialogTitle><AlertDialogDescription>This removes the local playlist and its notes. Your Instagram saved posts are unchanged.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Keep Playlist</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { const name = deleting; setDeleting(null); if (name) run(async () => { await deletePlaylist(name); headingRef.current?.focus(); }, 'Playlist deleted.'); }}><Trash2 className="mr-2 h-4 w-4" />Delete Playlist</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={!!importing} onOpenChange={open => { if (!open) setImporting(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Import {importing && Object.keys(importing.playlists).length} playlists?</AlertDialogTitle><AlertDialogDescription>Playlists with matching names will be replaced, including their notes and tags. Other playlists stay unchanged.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { const preview = importing; setImporting(null); if (preview) run(async () => { await saveAllPlaylists(preview.playlists); if (preview.active && Object.prototype.hasOwnProperty.call(preview.playlists, preview.active)) await setActivePlaylistName(preview.active); }, 'Playlists imported.'); }}>Import Playlists</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+  </section>;
+};

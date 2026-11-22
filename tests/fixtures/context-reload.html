@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Extension reload regression check</title></head>
+<body style="font:16px/1.5 system-ui,sans-serif;max-width:640px;margin:40px auto;padding:16px">
+  <h1>Extension reload regression check</h1>
+  <p>This local fixture runs the built content script with a disposable extension runtime. It does not read Instagram data.</p>
+  <button id="reload" style="padding:12px">Simulate extension reload</button>
+  <button id="check" style="padding:12px">Check retired script</button>
+  <pre id="result" role="status">Loading built content script…</pre>
+  <script type="module" src="./context-reload.js"></script>
+</body></html>

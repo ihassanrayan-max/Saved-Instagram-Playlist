@@ -7,7 +7,7 @@ All colors MUST be HSL.
 */
 
 @layer base {
-  :root {
+  :root, :host {
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
 
@@ -17,7 +17,7 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
 
-    --primary: 300 76% 52%;
+    --primary: 300 67% 36%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 240 4.8% 95.9%;
@@ -79,6 +79,17 @@ All colors MUST be HSL.
 
     --glass-bg: 0 0% 10% / 0.8;
     --glass-border: 0 0% 100% / 0.1;
+  }
+}
+
+.playlist-app { width: 780px; max-width: 100%; }
+.player-surface button:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
