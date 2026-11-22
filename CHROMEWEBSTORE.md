@@ -1,77 +1,69 @@
-# Chrome Web Store Listing — Instagram Video Playlist
+# Chrome Web Store publication
 
-Last updated: 2026-11-22. Draft release tracking only; nothing has been submitted or published.
+Version 1.4.0. The extension is available from source; no store submission has been made.
 
-## Store listing
+## Listing
 
-**Extension name:** Instagram Video Playlist
+**Name:** Instagram Video Playlist
 
 **Short description:** Turn your Instagram saved collections into interactive video playlists.
 
-**Detailed description draft:**
-
-Organize Instagram saved posts into playlists you can revisit for knowledge, motivation, or a particular feeling.
-
-Collect post links from a saved collection, search across your playlists, add personal titles and notes, and organize posts with tags. Play a selected post on Instagram and use the floating player to move through your queue, shuffle posts, or end your session.
-
-Your playlists and notes are stored in your browser. Export and import your library as a JSON file. Instagram saves are not modified. You need access to the original Instagram posts; removed or restricted content may not play.
-
-**Category:** Productivity (draft).
+**Category:** Productivity. **Language:** English.
 
 **Single purpose:** Organize and revisit Instagram saved posts as searchable playlists.
 
-**Primary language:** English.
+### Detailed description
 
-## Graphics and assets
+Return to the Instagram posts you saved for learning, practical reference, motivation, or a particular feeling.
 
-- `public/icon16.png`, `public/icon48.png`, and `public/icon128.png`: verified actual PNGs at 16×16, 48×48, and 128×128. Existing artwork retained; previous files were 512×512 JPEGs with PNG filenames.
-- Store screenshots and promotional graphics: not prepared. Capture the library, floating queue, and collection flow during the publication phase.
-- Required store screenshot sizes and final visual review remain publication work.
+Collect links from a saved collection, organize playlists, search titles and notes, and tag the posts you want to find again. Open a post on Instagram and control it from a floating player with pause, previous/next, shuffle, and a searchable queue.
 
-## Permissions justification
+Enable autoplay to continue to the next post, or turn it off to loop the current reel. Posts start with sound enabled when browser playback rules allow it. You can mute or pause at any time.
 
-- `storage`: Save the user's playlists, personal titles, notes, tags, collection progress, player position, and temporary playback session.
-- `tabs`: Identify the active Instagram tab and reuse an Instagram tab when the user opens a playlist entry.
-- `activeTab`: Currently declared. Review removal before publication because the present static content script uses scoped Instagram host access.
-- `https://www.instagram.com/*`: Read post links from the selected saved collection, display the floating playlist controls, and control playback when the user requests it. No access to other website origins is requested.
-- `content.css` is exposed only to Instagram so the isolated floating player can load its own stylesheet.
+Your library stays in your browser. Export it as JSON to keep a portable copy. The extension does not change your Instagram saves or ask for your password. Original posts must remain accessible to your signed-in Instagram account.
 
-## Privacy and data use
+Independent project; not affiliated with or endorsed by Instagram or Meta.
 
-The extension stores selected Instagram post URLs, available creator names/captions/thumbnails, user-created playlist names, personal titles, notes, and tags locally. Collection checkpoints are local. Playback state and timings are temporary browser-session data.
+## Permissions
 
-There is no extension analytics service, account system, or custom backend. No passwords or authentication tokens are collected by this extension. Playing original posts and loading their thumbnails uses Instagram and its media infrastructure; normal Instagram network traffic continues. JSON export creates a local file containing the user's library and notes, and sharing that file is up to the user.
+- `storage`: Save playlists, titles, notes, tags, collection checkpoints, player position, and temporary playback state.
+- `tabs`: Find and reuse the appropriate Instagram tab when opening a playlist entry.
+- `https://www.instagram.com/*`: Read links from saved collections, show playlist controls, and control the selected video's playback.
 
-Arbitrary personal information can appear in free-text notes or saved content. Final store data-use classifications must accurately cover that information before submission; do not claim that no user data is handled merely because it is stored locally.
+No access to unrelated websites is requested. No cookies, password access, analytics service, or remote executable code is used. The stylesheet is exposed only to Instagram so the floating controls can load their packaged styles.
 
-Current code does not sell data, use it for unrelated purposes, or use it for lending/credit decisions. The publisher must review and complete the store's declarations before submission.
+## Privacy and support
 
-## Privacy policy
+The data handling description is in [PRIVACY.md](PRIVACY.md). After this revision is pushed, the public policy is available at:
 
-A public privacy policy URL has not been supplied or published. This is a submission blocker for the publication phase.
+https://github.com/ihassanrayan-max/insta-saved-playlist/blob/main/PRIVACY.md
 
-## Distribution
+Support: https://github.com/ihassanrayan-max/insta-saved-playlist/issues
 
-Visibility and regions have not been selected. This project is currently tested as an unpacked extension.
+Homepage: https://github.com/ihassanrayan-max/insta-saved-playlist
 
-## Developer information
+The store data-use form must cover stored post references, website content, and user-entered notes. Local storage does not mean that no user data is handled. Playing posts and loading thumbnails makes normal requests to Instagram and the hosts in the thumbnail URLs. Exports can contain personal notes.
 
-Publisher name, public contact address, support URL, and homepage require the user's choices during publication preparation. No personal contact information has been inferred from the computer or account.
+## Assets and packaging
 
-## Version history
+The package contains 16, 48, and 128-pixel PNG icons, validated by the build. README screenshots use demonstration data and are not store listing screenshots.
 
-- **1.3.0 — 2026-11-22 — Local build:** Explain queue search matches, compact and collapsible post browsing, direct position editing, removal inside Edit, persistent pause and sound preferences, and Settings play/pause toggling.
-- **1.2.1 — 2026-11-21 — Local build:** Retire invalidated content scripts, cancel outstanding work, prevent stale storage fallback, and offer a reload prompt. Correct icon formats and dimensions and validate them during packaging.
-- **1.2.0 — 2026-11-21 — Local build:** Library search, personal metadata, queue controls, native-link navigation with fallback, and accessibility improvements.
+Run `npm ci`, `npm test`, `npm run lint`, and `npm run build`, then complete [the Instagram smoke test](TESTING.md). Zip only the contents of `dist`; `manifest.json` must be at the archive root. Do not include source files, tests, personal exports, or editor settings.
 
-## Review notes
+## Before submission
 
-No store submission or rejection is recorded.
+- Capture current store screenshots at 1280 x 800 or 640 x 400, using content appropriate to share publicly.
+- Supply a monitored publisher contact email and confirm the publisher display name.
+- Select visibility and distribution regions in the developer dashboard.
+- Verify the public privacy-policy URL and complete the data-use declarations.
+- Complete the authenticated playback/collection smoke test on the final package.
+- Record the demo video and verify its public links before promotion.
 
-### Known limitations
+Instagram layout changes, unavailable posts, and Chrome audible-autoplay restrictions remain external dependencies. Do not claim offline playback, mobile support, account-wide synchronization, or guaranteed loading times.
 
-- An Instagram tab must reload to reconnect after Chrome replaces or disables the extension's runtime. The extension detects invalidation and retires the old script rather than repeatedly calling disconnected APIs.
-- A tab still running a pre-1.2.1 content script needs one manual refresh to pick up the fix.
-- Instagram can change its DOM and media behavior. Native-link navigation is opportunistic; other post transitions use a full-document fallback.
-- Browser autoplay rules may require a user click for sound.
-- Final authenticated Instagram smoke testing, store screenshots, privacy policy publication, permission review, and release packaging remain separate publication tasks.
+## Unpublished version history
+
+- **1.4.0:** Autoplay toggle with native looping, unmuted starts and reloads, reduced dependencies, documentation and permission cleanup.
+- **1.3.0:** Queue match details, compact editing, direct position changes, pause controls, and sound controls. Subsequent fix recognizes Instagram's plural reels routes.
+- **1.2.1:** Extension invalidation handling and icon/package validation.
+- **1.2.0:** Search, personal metadata, queue navigation, and accessibility improvements.
