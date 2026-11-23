@@ -20,7 +20,7 @@ No external analysis service receives your saved content or notes. Extension cod
 
 You can edit playlists, remove individual entries or playlists, and export/import your library as JSON. Exports include notes and post references; review them before sharing.
 
-Local library data remains until removed or the extension is uninstalled. Collection checkpoints can be removed with **Clear Collected URLs**. Session state is temporary and is cleared when the browser session ends. Deleting an extension playlist does not unsave its posts on Instagram. Exported copies remain wherever you save or share them.
+Local library data remains until removed or the extension is uninstalled. Collection checkpoints can be removed with **Clear Collected Links**. Session state is temporary and is cleared when the browser session ends. Deleting an extension playlist does not unsave its posts on Instagram. Exported copies remain wherever you save or share them.
 
 ## Changes and contact
 

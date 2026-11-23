@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Instagram Video Playlist",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "minimum_chrome_version": "116",
   "description": "Turn your Instagram saved collections into interactive video playlists",
   "permissions": [

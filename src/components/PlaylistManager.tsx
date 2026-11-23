@@ -124,7 +124,7 @@ export const PlaylistManager = () => {
       <label htmlFor="library-search" className="text-sm font-medium">Find something you saved</label>
       <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
         <Input id="library-search" ref={searchRef} type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search playlists, titles, notes, tags, or creators" className="pl-10" aria-describedby="search-help" />
-      </div><p id="search-help" className="text-xs text-muted-foreground">Search across your library. Ctrl/⌘ K focuses search. Notes and tags stay in this browser.</p>
+      </div><p id="search-help" className="text-xs text-muted-foreground">Find posts in any playlist by title, creator, tag, or a note.</p>
     </div>
     {error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>}
     <p role="status" aria-live="polite" className={cn('text-sm', status ? 'text-foreground' : 'sr-only')}>{status || (busy ? 'Working…' : '')}</p>
@@ -164,7 +164,7 @@ export const PlaylistManager = () => {
         {!query.trim() && selected && <form className="flex items-end gap-2" onSubmit={event => { event.preventDefault(); run(async () => {
           const item = normalizeItem({ url: manualUrl.trim() }); await addUrlsToPlaylist(selected, [item]); setManualUrl('');
         }, 'Post added.'); }}>
-          <div className="flex-1 space-y-1"><label htmlFor="manual-url" className="text-xs font-medium">Add a post by URL</label><Input id="manual-url" type="url" value={manualUrl} onChange={e => setManualUrl(e.target.value)} placeholder="https://www.instagram.com/reel/…" required /></div>
+          <div className="flex-1 space-y-1"><label htmlFor="manual-url" className="text-xs font-medium">Paste an Instagram post link</label><Input id="manual-url" type="url" value={manualUrl} onChange={e => setManualUrl(e.target.value)} placeholder="https://www.instagram.com/reel/…" required /></div>
           <Button variant="outline" disabled={busy || !manualUrl.trim()}>Add Post</Button>
         </form>}
         <details ref={postDisclosure} open className="rounded-xl border border-border">
@@ -189,28 +189,28 @@ export const PlaylistManager = () => {
             </div>
             <Button id={`edit-${encodeURIComponent(name)}-${item.shortcode}`} size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label={`Edit post ${postTitle(item)}`} disabled={busy} onClick={() => { setError(''); setEditor({ name, item, title: item.title || '', notes: item.notes || '', tags: item.tags?.join(', ') || '', position: String(index + 1) }); }}><Pencil /></Button>
           </article>)}
-          {!rows.length && <div className="space-y-2 px-6 py-12 text-center"><ListMusic className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" /><p className="font-medium">{loading ? 'Loading your playlists' : query.trim() ? 'No matching posts' : 'Make room for what matters'}</p><p className="text-sm text-muted-foreground">{query.trim() ? 'Try another word, creator, or tag.' : 'Add a URL above or collect a saved collection below.'}</p>{query && <Button variant="outline" size="sm" onClick={() => setQuery('')}>Clear Search</Button>}</div>}
+          {!rows.length && <div className="space-y-2 px-6 py-12 text-center"><ListMusic className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" /><p className="font-medium">{loading ? 'Loading your playlists' : query.trim() ? 'No matching posts' : 'No posts yet'}</p><p className="text-sm text-muted-foreground">{query.trim() ? 'Try a different title, creator, or tag.' : selected ? 'Paste a post link above, or add posts from an Instagram collection below.' : 'Create a playlist to start adding posts.'}</p>{query && <Button variant="outline" size="sm" onClick={() => setQuery('')}>Clear Search</Button>}</div>}
         </div>
         </details>
         {pages > 1 && <nav aria-label="Post result pages" className="flex items-center justify-between gap-2"><Button variant="outline" size="sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-xs text-muted-foreground">Page {currentPage + 1} of {pages}</span><Button variant="outline" size="sm" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></nav>}
       </div>
     </div>
 
-    <Dialog open={!!nameDialog} onOpenChange={open => { if (!open && !busy) setNameDialog(null); }}><DialogContent><DialogHeader><DialogTitle>{nameDialog === 'rename' ? 'Rename Playlist' : 'Create a Playlist'}</DialogTitle><DialogDescription>A place for knowledge, a feeling, or something you want to return to.</DialogDescription></DialogHeader>
+    <Dialog open={!!nameDialog} onOpenChange={open => { if (!open && !busy) setNameDialog(null); }}><DialogContent><DialogHeader><DialogTitle>{nameDialog === 'rename' ? 'Rename Playlist' : 'Create a Playlist'}</DialogTitle><DialogDescription>Choose a name, such as Useful tools or Motivation.</DialogDescription></DialogHeader>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <form className="space-y-4" onSubmit={event => { event.preventDefault(); run(async () => {
         const name = nameValue.trim(); if (nameDialog === 'rename' && selected) await renamePlaylist(selected, name); else await createPlaylist(name);
         selectedRef.current = name; setSelected(name); setQuery(''); setNameDialog(null);
       }, 'Playlist saved.'); }}><label className="block space-y-2"><span className="text-sm font-medium">Playlist name</span><Input autoFocus value={nameValue} onChange={e => setNameValue(e.target.value)} required /></label><Button disabled={busy || !nameValue.trim()}>Save Playlist</Button></form>
     </DialogContent></Dialog>
-    <Dialog open={!!editor} onOpenChange={open => { if (!open && !busy) setEditor(null); }}><DialogContent><DialogHeader><DialogTitle>Edit post</DialogTitle><DialogDescription>Your personal notes stay in this browser and are included in exports.</DialogDescription></DialogHeader>
+    <Dialog open={!!editor} onOpenChange={open => { if (!open && !busy) setEditor(null); }}><DialogContent><DialogHeader><DialogTitle>Edit post</DialogTitle><DialogDescription>Add a title, notes, or tags to help you find this post later.</DialogDescription></DialogHeader>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {editor && <form className="space-y-4" onSubmit={event => { event.preventDefault(); run(async () => {
         await annotatePlaylistItem(editor.name, editor.item.shortcode, { title: editor.title.trim(), notes: editor.notes.trim(), tags: editor.tags.split(',').map(tag => tag.trim()).filter(Boolean) }, Number(editor.position)); setEditor(null);
       }, 'Title, notes, and tags saved.'); }}>
-        <label className="block space-y-1"><span className="text-sm font-medium">Your title</span><Input maxLength={160} value={editor.title} onChange={e => setEditor({ ...editor, title: e.target.value })} placeholder="What do you want to remember?" /></label>
+        <label className="block space-y-1"><span className="text-sm font-medium">Your title</span><Input maxLength={160} value={editor.title} onChange={e => setEditor({ ...editor, title: e.target.value })} placeholder="A short name for this post" /></label>
         <label className="block space-y-1"><span className="text-sm font-medium">Notes</span><Textarea maxLength={5000} value={editor.notes} onChange={e => setEditor({ ...editor, notes: e.target.value })} placeholder="A useful detail, a tool name, or how this made you feel" /></label>
-        <label className="block space-y-1"><span className="text-sm font-medium">Tags, separated by commas</span><Input value={editor.tags} onChange={e => setEditor({ ...editor, tags: e.target.value })} placeholder="motivation, tools, calm" /><span className="block text-xs text-muted-foreground">Up to 20 tags, 64 characters each.</span></label>
+        <label className="block space-y-1"><span className="text-sm font-medium">Tags, separated by commas</span><Input value={editor.tags} onChange={e => setEditor({ ...editor, tags: e.target.value })} placeholder="design, tools, learning" /><span className="block text-xs text-muted-foreground">Add up to 20 short tags to group related posts.</span></label>
         <label className="block space-y-1"><span className="text-sm font-medium">Position in playlist</span><Input type="number" min={1} max={playlists[editor.name]?.length || 1} step={1} required value={editor.position} onChange={event => setEditor({ ...editor, position: event.target.value })} /><span className="block text-xs text-muted-foreground">Move directly to any position from 1 to {playlists[editor.name]?.length || 1}.</span></label>
         <div className="flex justify-between gap-2"><Button type="button" variant="outline" className="text-destructive" disabled={busy} onClick={() => setDeletePost({ name: editor.name, item: editor.item })}><Trash2 />Remove from Playlist</Button><Button disabled={busy}>Save Changes</Button></div>
       </form>}

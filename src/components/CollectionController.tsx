@@ -16,8 +16,8 @@ export const CollectionController = () => {
     const id = await selectedInstagramTab();
     let response: ExtensionResponse;
     try { response = await extensionCall(() => chrome.tabs.sendMessage(id, message)); }
-    catch { throw new Error('The extension cannot reach this Instagram tab. Reload the tab after installing or updating the extension.'); }
-    if (!response?.ok) throw new Error(response?.error || 'Instagram did not acknowledge the command.');
+    catch { throw new Error('Refresh your Instagram tab, then try again.'); }
+    if (!response?.ok) throw new Error(response?.error || 'Instagram did not respond. Try again.');
     return response.data;
   }, []);
   const refresh = useCallback(async () => {
@@ -55,7 +55,7 @@ export const CollectionController = () => {
   const collecting = snapshot?.status === 'collecting';
   return (
     <div className="w-full space-y-4 border-t pt-4 mt-4">
-      <div><h3 className="font-semibold text-lg">Playlist Controller</h3><p className="text-sm text-muted-foreground">Open a saved collection in Instagram’s active tab.</p></div>
+      <div><h3 className="font-semibold text-lg">Add posts from Instagram</h3><p className="text-sm text-muted-foreground">Open Saved on Instagram, then open the collection you want to add.</p></div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {info && <p className="text-sm text-muted-foreground">{info}</p>}
       {snapshot && <div className="p-4 bg-muted rounded-lg space-y-2" role="status" aria-live="polite">
@@ -67,18 +67,18 @@ export const CollectionController = () => {
         {collecting
           ? <Button disabled={busy} className="w-full" variant="destructive" onClick={() => run(() => send({ type: 'STOP_COLLECTION' }))}>Stop Collection</Button>
           : <>
-            <Button disabled={busy || !!info} className="w-full" onClick={() => run(() => send({ type: 'START_COLLECTION', resume: false }))}>{snapshot?.count ? 'Collect Again (fresh scan)' : 'Start Collection'}</Button>
+            <Button disabled={busy || !!info} className="w-full" onClick={() => run(() => send({ type: 'START_COLLECTION', resume: false }))}>{snapshot?.count ? 'Scan Collection Again' : 'Start Collection'}</Button>
             {!!snapshot?.count && <Button disabled={busy} className="w-full" variant="secondary" onClick={() => run(() => send({ type: 'START_COLLECTION', resume: true }))}>Resume Collection</Button>}
           </>}
-        <Button disabled={busy} className="w-full" variant="outline" onClick={() => run(refresh)}>Refresh Status</Button>
+        <Button disabled={busy} className="w-full" variant="outline" onClick={() => run(refresh)}>Check Progress</Button>
         {!!snapshot?.count && <Button disabled={busy || collecting || !active} className="w-full" onClick={() => run(async () => {
           if (!active || !snapshot) return;
           await addUrlsToPlaylist(active, await readCollectionItems(snapshot));
-        })}>Import {snapshot.count} Posts to {active || 'an Active Playlist'}</Button>}
-        {!active && <p className="text-xs text-muted-foreground">Activate a playlist above before importing.</p>}
-        {!!snapshot?.count && <Button disabled={busy || collecting} className="w-full" variant="outline" onClick={() => run(() => send({ type: 'CLEAR_COLLECTION' }))}>Clear Collected URLs</Button>}
+        })}>Add {snapshot.count} Posts to {active || 'a Playlist'}</Button>}
+        {!active && <p className="text-xs text-muted-foreground">Choose a playlist above and click Activate before adding posts.</p>}
+        {!!snapshot?.count && <Button disabled={busy || collecting} className="w-full" variant="outline" onClick={() => run(() => send({ type: 'CLEAR_COLLECTION' }))}>Clear Collected Links</Button>}
       </div>
-      <p className="text-xs text-muted-foreground">Progress saves as posts appear. Resume merges new posts; a fresh scan rebuilds the collected list. Your Instagram saves are never modified.</p>
+      <p className="text-xs text-muted-foreground">Progress is saved automatically, so you can stop and continue later. Your Instagram saves stay unchanged.</p>
     </div>
   );
 };

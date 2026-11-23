@@ -36,8 +36,8 @@ After rebuilding, click **Reload** on the extension card and refresh Instagram. 
 
 1. Open the extension, create a playlist, select it, and choose **Activate**.
 2. In Instagram, open Saved and enter one collection. Keep that Instagram tab selected when opening the extension.
-3. Under **Playlist Controller**, choose **Start Collection**. You can stop and resume; progress is saved in batches.
-4. When collection stops, choose **Import ... Posts** to add results to the active playlist. Re-importing deduplicates existing post references.
+3. Under **Add posts from Instagram**, choose **Start Collection**. You can stop and resume; progress is saved in batches.
+4. When collection stops, choose **Add ... Posts** to add results to the active playlist. Re-importing deduplicates existing post references.
 5. Click an entry to open it, or choose **Play Playlist**. Use the floating player to control the video and queue.
 6. Add titles, notes, tags, or a queue position through **Edit**. Use **Export** to keep a portable copy of your library.
 
