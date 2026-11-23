@@ -1,6 +1,8 @@
 # Chrome Web Store publication
 
-Version 1.4.0. The extension is available from source; no store submission has been made.
+Version 1.4.1. The upload was accepted as a Chrome Web Store draft. Listing setup is in progress; it has not been submitted for review.
+
+**Draft item ID:** `kpphcabidgofolkipohnflpfimjnhefp`.
 
 ## Listing
 
@@ -46,13 +48,13 @@ The store data-use form must cover stored post references, website content, and 
 
 ## Assets and packaging
 
-The package contains 16, 48, and 128-pixel PNG icons, validated by the build. README screenshots use demonstration data and are not store listing screenshots.
+The package contains 16, 48, and 128-pixel PNG icons, validated by the build. Three current 1280 x 800 library screenshots and a 440 x 280 promotional tile are in `store-assets/`. They use only approved Useful tools post references with demonstration annotations; see `store-assets/README.md` for provenance.
 
 Run `npm ci`, `npm test`, `npm run lint`, and `npm run build`, then complete [the Instagram smoke test](TESTING.md). Zip only the contents of `dist`; `manifest.json` must be at the archive root. Do not include source files, tests, personal exports, or editor settings.
 
 ## Before submission
 
-- Capture current store screenshots at 1280 x 800 or 640 x 400, using content appropriate to share publicly.
+- Upload the reviewed current screenshots and promotional tile from `store-assets/`.
 - Supply a monitored publisher contact email and confirm the publisher display name.
 - Select visibility and distribution regions in the developer dashboard.
 - Verify the public privacy-policy URL and complete the data-use declarations.
@@ -63,6 +65,7 @@ Instagram layout changes, unavailable posts, and Chrome audible-autoplay restric
 
 ## Unpublished version history
 
+- **1.4.1:** Clearer search, editing, collection, and autoplay instructions; current store images.
 - **1.4.0:** Autoplay toggle with native looping, unmuted starts and reloads, reduced dependencies, documentation and permission cleanup.
 - **1.3.0:** Queue match details, compact editing, direct position changes, pause controls, and sound controls. Subsequent fix recognizes Instagram's plural reels routes.
 - **1.2.1:** Extension invalidation handling and icon/package validation.

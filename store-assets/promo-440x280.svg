@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="280" viewBox="0 0 440 280">
+  <defs><linearGradient id="brand" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#ffbd42"/><stop offset=".45" stop-color="#f24965"/><stop offset="1" stop-color="#a218a4"/></linearGradient></defs>
+  <rect width="440" height="280" fill="#16131c"/>
+  <circle cx="416" cy="24" r="176" fill="#251a31"/>
+  <rect x="30" y="28" width="54" height="54" rx="15" fill="url(#brand)"/>
+  <path d="M47 43v23l20-11.5z" fill="white"/>
+  <text x="30" y="121" fill="white" font-family="Arial,sans-serif" font-size="27" font-weight="700">Instagram</text>
+  <text x="30" y="154" fill="white" font-family="Arial,sans-serif" font-size="27" font-weight="700">Video Playlist</text>
+  <text x="31" y="189" fill="#c5bccf" font-family="Arial,sans-serif" font-size="14">Return to something you saved.</text>
+  <rect x="276" y="100" width="136" height="128" rx="16" fill="#302838"/>
+  <rect x="289" y="114" width="110" height="29" rx="8" fill="url(#brand)"/>
+  <path d="M302 122v13l11-6.5z" fill="white"/>
+  <path d="M326 124h57m-57 10h38" stroke="white" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+  <rect x="289" y="153" width="110" height="25" rx="7" fill="#463b50"/>
+  <path d="M301 163h80m-80 7h49" stroke="#c5bccf" stroke-width="3" stroke-linecap="round"/>
+  <rect x="289" y="188" width="110" height="25" rx="7" fill="#463b50"/>
+  <path d="M301 198h80m-80 7h64" stroke="#c5bccf" stroke-width="3" stroke-linecap="round"/>
+  <text x="31" y="246" fill="#c5bccf" font-family="Arial,sans-serif" font-size="12">SAVE  /  FIND  /  REPLAY</text>
+</svg>
